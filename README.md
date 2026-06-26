@@ -38,6 +38,10 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 | `apt_engine.phases` | canonical SA→SP→ST→SCW→MetaReview→Cleanup chain + per-phase precondition/postcondition + canonical `APT_GATE_VERSION` strings. Single source of truth. |
 | `apt_engine.gate`   | gate verdict algebra: `PASS / FAIL / SKIP / CONDITIONAL`. **SKIP is never PASS.** Self-application (MetaReview→MetaReview) is forbidden. |
 | `apt_engine.detect` | on-disk phase detection from `apt-progress.md` / `feature-spans.json`. Returns `unknown` rather than fabricating a phase. |
+| `apt_engine.phase_map` | (a) v9 ↔ v27 phase-taxonomy reconciliation (KG's older 6-phase set ↔ the v27 chain). |
+| `apt_engine.legion` | (b) the 7 legion commanders + KG canonical node map; naesengmoon emits the gate verdict, hades realizes iff PASS. |
+| `apt_engine.gate_override` | audited escape hatch — no silent override; 24h TTL; permanent needs the literal phrase; only a FAIL is overridable. |
+| `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_reconcile / apt_legion`. |
 
 Both `phases` and `gate` are transcribed from the canonical contract ADRs:
 - `bhgman_tool/ADRs/apt-phase-contract-2026-05-25.md`
