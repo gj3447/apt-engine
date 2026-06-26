@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apt-engine"
+version = "0.1.0"
+description = "Deterministic APT (SA->SP->ST->SCW->MetaReview->Cleanup) phase-contract engine: phase state machine + gate verdict model + on-disk phase detection. Stdlib-only core."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "gj3447" }]
+# Core (phases / gate / detect) has ZERO runtime deps (stdlib only).
+# The MCP server frontend needs fastmcp; install via the `mcp` extra.
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["fastmcp>=0.2"]
+dev = ["pytest>=7", "ruff"]
+
+[project.scripts]
+apt-engine = "apt_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
