@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from .detect import detect_phase
 from .gate import GateResult, Verdict, can_advance, evaluate_transition
+from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_commander
+from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .phases import CHAIN, PHASES, Phase, is_self_application, next_phase, phase_by_name
 
 __version__ = "0.1.0"
@@ -26,4 +28,16 @@ __all__ = [
     "can_advance",
     "evaluate_transition",
     "detect_phase",
+    # (a) v9<->v27 reconciliation
+    "V9_TO_V27",
+    "to_v27",
+    "to_v9",
+    "is_total",
+    "is_onto",
+    # (b) legion wiring
+    "COMMANDERS",
+    "ROSTER",
+    "commander",
+    "verdict_commander",
+    "hades_realizes",
 ]
