@@ -42,6 +42,16 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 | `apt_engine.legion` | (b) the 7 legion commanders + KG canonical node map; naesengmoon emits the gate verdict, hades realizes iff PASS. |
 | `apt_engine.gate_override` | audited escape hatch — no silent override; 24h TTL; permanent needs the literal phrase; only a FAIL is overridable. |
 | `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_reconcile / apt_legion`. |
+| `apt_engine.resolver` | config-resolver drift detection (stdlib core) + KG/jinja render (`.[resolver]`). Ported from SYMPOSIUM `resolver_prototype`. |
+| `apt_engine.gate_policy` | enforcement mode mapping (INFORMATIONAL advisory / BLOCKER fail-closed → PASS/FAIL/WOULD_FAIL/OPEN_REFUSED). |
+| `apt_engine.circuit_breaker` | 3-state breaker (CLOSED/OPEN/HALF_OPEN); redis-free `InMemoryStore` default, injectable clock. |
+| `apt_engine.opa` | OPA Rego policy gate — `StaticOPAPolicy` (fail-closed, testable) + HTTP client (`.[opa]`). |
+
+The resolver/gate-resilience modules are ported from the dgx-only SYMPOSIUM
+prototypes (`gj3447/symposium` `THEORY/APT/{resolver,gate_endpoint}_prototype`),
+re-layered so the deterministic cores (drift detection, breaker FSM, enforcement
+mapping, policy decision) are stdlib + unit-testable, and the I/O (neo4j, jinja,
+redis, OPA HTTP) is optional/pluggable.
 
 Both `phases` and `gate` are transcribed from the canonical contract ADRs:
 - `bhgman_tool/ADRs/apt-phase-contract-2026-05-25.md`
