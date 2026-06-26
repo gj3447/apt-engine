@@ -8,6 +8,29 @@ Sibling to `tpa-engine` in `PROJECT/PI`. Stdlib-only core — zero runtime deps.
 APT here is the methodology sense (the tech-stack 사도 / v27 phase cycle), not
 the Debian package manager.
 
+## Methodology: the phase chain drives the 7 legion commanders
+
+APT is a development methodology that runs the **7 legion commanders** (비행기맨 #4
+legion) through its phase chain. The commanders are the *executors*; the phases
+are *when* and *under what gate* they run. Canonical commander order (from
+`bhgman_tool` `legion_roster`):
+
+| # | commander | verb | requires → provides |
+|---|---|---|---|
+| 1 | prometheus | 획득 (acquire) | run_cypher → acquired |
+| 2 | longinus   | 연결 (bind)    | run_cypher → bindings |
+| 3 | eureka     | 창조 (create)  | run_cypher → abstractions |
+| 4 | occam      | 정리 (hygiene) | run_cypher → hygiene |
+| 5 | naesengmoon| 검증 (verify)  | acquired+bindings+abstractions+hygiene → **verdict** |
+| 6 | hades      | 실현 (realize) | verdict → realized |
+| – | jaebaeman  | 출격 (dispatch)| the `Legion.run` dispatch loop itself (not a stage) |
+
+The verdict naesengmoon emits is exactly the gate verdict this engine models in
+`gate.py` (`PASS / FAIL / SKIP / CONDITIONAL`), and hades only realizes after a
+PASS — mirroring `can_advance`. So **`apt_engine` is the deterministic
+phase-and-gate substrate**; the legion runtime (commander dispatch, LLM agents)
+layers on top and is out of scope for this stdlib core (see ADR-0001).
+
 ## What it is
 
 | module | role |
