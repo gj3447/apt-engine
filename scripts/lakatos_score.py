@@ -42,6 +42,10 @@ def main() -> int:
         "legion": _passed(["tests/test_legion.py"]),
         "gate_override": _passed(["tests/test_gate_override.py"]),
         "mcp_frontend": _passed(["tests/test_mcp_frontend.py"]),
+        "resolver_port": _passed(["tests/test_resolver_drift.py"]),
+        "opa_gate": _passed([
+            "tests/test_circuit_breaker.py", "tests/test_gate_policy.py", "tests/test_opa.py",
+        ]),
         "suite_total": _passed([]),
     }
     print(json.dumps(metrics))

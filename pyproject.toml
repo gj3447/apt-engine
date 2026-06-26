@@ -16,6 +16,9 @@ dependencies = []
 
 [project.optional-dependencies]
 mcp = ["fastmcp>=0.2"]
+resolver = ["neo4j>=5", "jinja2>=3"]   # KG-backed config resolver + marker render
+opa = ["httpx>=0.24"]                  # OPA Rego policy gate (layer-2)
+redis = ["redis>=5"]                   # redis-backed circuit breaker (in-memory default)
 dev = ["pytest>=7", "ruff"]
 
 [project.scripts]

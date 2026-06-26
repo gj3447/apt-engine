@@ -9,8 +9,10 @@ Public surface:
 from __future__ import annotations
 
 from .detect import detect_phase
+from .circuit_breaker import CircuitBreaker, InMemoryStore, State
 from .gate import GateResult, Verdict, can_advance, evaluate_transition
 from .gate_override import GateOverride, disclosure, make_override, override_allows
+from .gate_policy import EnforcementMode, OutwardVerdict, enforce
 from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_commander
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .phases import CHAIN, PHASES, Phase, is_self_application, next_phase, phase_by_name
@@ -46,4 +48,11 @@ __all__ = [
     "make_override",
     "override_allows",
     "disclosure",
+    # gate enforcement + resilience (ported from gate_endpoint_prototype)
+    "EnforcementMode",
+    "OutwardVerdict",
+    "enforce",
+    "CircuitBreaker",
+    "InMemoryStore",
+    "State",
 ]
