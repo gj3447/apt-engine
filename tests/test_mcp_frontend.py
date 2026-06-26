@@ -1,0 +1,38 @@
+"""MCP frontend — tool bodies are pure and testable without fastmcp installed."""
+
+from apt_engine.frontends.mcp_server import build_tools
+from apt_engine.phases import CHAIN
+
+
+def test_all_five_tools_present():
+    tools = build_tools()
+    assert set(tools) == {"apt_chain", "apt_detect", "apt_gate", "apt_reconcile", "apt_legion"}
+
+
+def test_chain_tool_returns_canonical_order():
+    rows = build_tools()["apt_chain"]()
+    assert [r["name"] for r in rows] == list(CHAIN)
+
+
+def test_gate_tool_matches_core_semantics():
+    gate = build_tools()["apt_gate"]
+    assert gate("SA", "SP")["verdict"] == "PASS"
+    assert gate("SP", "ST", skipped=True)["verdict"] == "SKIP"
+    assert gate("ST", "SCW", precondition_met=False)["gate_version"] == "v27_phase_scw_dispatch_guard"
+
+
+def test_reconcile_tool_both_directions():
+    rec = build_tools()["apt_reconcile"]
+    assert rec("v9_PH6_Feedback")["v27"] == ["MetaReview", "Cleanup"]
+    assert rec("SA")["v9"] == ["v9_PH1_SA", "v9_PH2_Root"]
+    assert set(rec()["v9_to_v27"]) == {
+        "v9_PH1_SA", "v9_PH2_Root", "v9_PH3_SP", "v9_PH4_ST", "v9_PH5_SCW", "v9_PH6_Feedback",
+    }
+
+
+def test_legion_tool_reports_hades_realize_table():
+    leg = build_tools()["apt_legion"]()
+    assert leg["verdict_commander"] == "naesengmoon"
+    table = leg["hades_realizes_by_verdict"]
+    assert table == {"PASS": True, "FAIL": False, "SKIP": False, "CONDITIONAL": False}
+    assert len(leg["roster"]) == 7

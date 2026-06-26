@@ -40,6 +40,8 @@ def main() -> int:
     metrics = {
         "reconcile": _passed(["tests/test_phase_map.py"]),
         "legion": _passed(["tests/test_legion.py"]),
+        "gate_override": _passed(["tests/test_gate_override.py"]),
+        "mcp_frontend": _passed(["tests/test_mcp_frontend.py"]),
         "suite_total": _passed([]),
     }
     print(json.dumps(metrics))
