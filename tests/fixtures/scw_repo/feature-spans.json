@@ -1,0 +1,7 @@
+{
+  "spans": [
+    {"name": "root", "depth": 0, "status": "decomposed"},
+    {"name": "parse-input", "depth": 1, "status": "atomic"},
+    {"name": "emit-output", "depth": 1, "status": "atomic"}
+  ]
+}
