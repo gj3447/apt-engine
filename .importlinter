@@ -1,0 +1,19 @@
+# Enforces ADR-0002: the deterministic core must not depend on the layer-2 ports.
+# Run: PYTHONPATH=src lint-imports   (or `lint-imports` when installed)
+[importlinter]
+root_package = apt_engine
+
+[importlinter:contract:core-not-contrib]
+name = Deterministic core must not import the layer-2 ports (apt_engine.contrib)
+type = forbidden
+source_modules =
+    apt_engine.phases
+    apt_engine.gate
+    apt_engine.detect
+    apt_engine.phase_map
+    apt_engine.legion
+    apt_engine.precondition
+    apt_engine.cli
+    apt_engine.frontends.mcp_server
+forbidden_modules =
+    apt_engine.contrib
