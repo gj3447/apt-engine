@@ -55,7 +55,12 @@ def test_evaluate_measured_has_no_kwargs_passthrough_and_fixed_params():
     # No **kwargs -> a future second override (e.g. assume_met) is a hard TypeError,
     # and the exact param whitelist trips if anyone widens the surface.
     assert set(inspect.signature(evaluate_measured).parameters) == {
-        "from_phase", "to_phase", "runner", "target", "conditional", "skipped",
+        "from_phase",
+        "to_phase",
+        "runner",
+        "target",
+        "conditional",
+        "skipped",
     }
     with pytest.raises(TypeError):
         evaluate_measured("SCW", "MetaReview", runner=lambda t: 1, target="x", assume_met=True)
@@ -65,7 +70,11 @@ def test_default_variant_exposes_no_injectable_runner():
     # H-C / M-A: the production entry hardwires pytest_runner; a caller cannot
     # forge the exit code by injecting a runner.
     assert set(inspect.signature(evaluate_measured_default).parameters) == {
-        "from_phase", "to_phase", "target", "conditional", "skipped",
+        "from_phase",
+        "to_phase",
+        "target",
+        "conditional",
+        "skipped",
     }
     with pytest.raises(TypeError):
         evaluate_measured_default("SCW", "MetaReview", runner=lambda t: 0, target="x")

@@ -7,7 +7,12 @@ from apt_engine.phases import CHAIN
 def test_all_tools_present():
     tools = build_tools()
     assert set(tools) == {
-        "apt_chain", "apt_detect", "apt_gate", "apt_gate_measured", "apt_reconcile", "apt_legion",
+        "apt_chain",
+        "apt_detect",
+        "apt_gate",
+        "apt_gate_measured",
+        "apt_reconcile",
+        "apt_legion",
     }
 
 
@@ -35,7 +40,9 @@ def test_gate_tool_matches_core_semantics():
     assert gate("SA", "SP", precondition_met=True)["verdict"] == "PASS"
     assert gate("SA", "SP")["verdict"] != "PASS"
     assert gate("SP", "ST", skipped=True)["verdict"] == "SKIP"
-    assert gate("ST", "SCW", precondition_met=False)["gate_version"] == "v27_phase_scw_dispatch_guard"
+    assert (
+        gate("ST", "SCW", precondition_met=False)["gate_version"] == "v27_phase_scw_dispatch_guard"
+    )
 
 
 def test_reconcile_tool_both_directions():
@@ -43,7 +50,12 @@ def test_reconcile_tool_both_directions():
     assert rec("v9_PH6_Feedback")["v27"] == ["MetaReview", "Cleanup"]
     assert rec("SA")["v9"] == ["v9_PH1_SA", "v9_PH2_Root"]
     assert set(rec()["v9_to_v27"]) == {
-        "v9_PH1_SA", "v9_PH2_Root", "v9_PH3_SP", "v9_PH4_ST", "v9_PH5_SCW", "v9_PH6_Feedback",
+        "v9_PH1_SA",
+        "v9_PH2_Root",
+        "v9_PH3_SP",
+        "v9_PH4_ST",
+        "v9_PH5_SCW",
+        "v9_PH6_Feedback",
     }
 
 

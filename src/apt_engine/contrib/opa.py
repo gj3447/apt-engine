@@ -24,8 +24,7 @@ class OPADecision:
 
 @runtime_checkable
 class OPAPolicy(Protocol):
-    def evaluate(self, policy_path: str, input_doc: dict[str, Any]) -> OPADecision:
-        ...
+    def evaluate(self, policy_path: str, input_doc: dict[str, Any]) -> OPADecision: ...
 
 
 class StaticOPAPolicy:
@@ -62,7 +61,9 @@ class HTTPOPAClient:
         try:
             import httpx
         except ImportError as exc:  # pragma: no cover - serve-time only
-            raise SystemExit("OPA HTTP client needs the 'opa' extra: pip install -e '.[opa]'") from exc
+            raise SystemExit(
+                "OPA HTTP client needs the 'opa' extra: pip install -e '.[opa]'"
+            ) from exc
 
         path = policy_path.replace(".", "/")
         resp = httpx.post(

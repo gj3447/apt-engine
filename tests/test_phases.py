@@ -45,7 +45,9 @@ def test_next_phase_walks_chain_then_terminates():
 def test_gate_version_strings_are_canonical():
     assert phase_by_name("SA").gate_version_on_fail == "v27_phase_sa_no_topic"
     assert phase_by_name("SCW").gate_version_on_fail == "v27_phase_scw_dispatch_guard"
-    assert phase_by_name("MetaReview").gate_version_on_fail == "v27_phase_meta_review_dispatch_guard"
+    assert (
+        phase_by_name("MetaReview").gate_version_on_fail == "v27_phase_meta_review_dispatch_guard"
+    )
 
 
 def test_metareview_self_application_forbidden():

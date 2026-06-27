@@ -1,10 +1,10 @@
 """apt-engine CLI.
 
-  apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
-  apt-engine chain                # print canonical phase chain + contracts
-  apt-engine gate <from> <to>     # evaluate a transition; exit 0 iff PASS.
-                                  #   default fail-closed; --precondition-met to assert,
-                                  #   --measure TARGET to gate on a real pytest run.
+apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
+apt-engine chain                # print canonical phase chain + contracts
+apt-engine gate <from> <to>     # evaluate a transition; exit 0 iff PASS.
+                                #   default fail-closed; --precondition-met to assert,
+                                #   --measure TARGET to gate on a real pytest run.
 """
 
 from __future__ import annotations

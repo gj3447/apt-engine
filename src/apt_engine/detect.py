@@ -120,7 +120,9 @@ def detect_phase(repo_path: str) -> PhaseReport:
             sources.append(spans_file.name)
 
     phase = _current_phase(detected)
-    confidence = "AMBIGUOUS" if phase == "unknown" else ("EXTRACTED" if has_progress else "INFERRED")
+    confidence = (
+        "AMBIGUOUS" if phase == "unknown" else ("EXTRACTED" if has_progress else "INFERRED")
+    )
     return {
         "repo_path": str(root),
         "current_phase": phase,
