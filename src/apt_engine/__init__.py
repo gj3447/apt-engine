@@ -20,14 +20,17 @@ from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_comma
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .precondition import (
     MEASURABLE_TRANSITIONS,
+    FileManifestSource,
     ImpactReq,
     ImpactSpec,
+    ManifestSource,
     PreconditionEvidence,
     TestRunner,
     evaluate_measured,
     evaluate_measured_default,
     evaluate_measured_mandated,
     evaluate_measured_mandated_default,
+    evaluate_measured_mandated_from,
     is_measurable,
     load_impact_manifest,
     measure,
@@ -68,6 +71,9 @@ __all__ = [
     "measure_mandated",
     "evaluate_measured_mandated",
     "evaluate_measured_mandated_default",
+    "evaluate_measured_mandated_from",
+    "ManifestSource",
+    "FileManifestSource",
     "pytest_collector",
     "pytest_id_runner",
     # (a) v9<->v27 reconciliation
