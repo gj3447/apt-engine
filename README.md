@@ -40,18 +40,19 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 | `apt_engine.detect` | on-disk phase detection from `apt-progress.md` / `feature-spans.json`. Returns `unknown` rather than fabricating a phase. |
 | `apt_engine.phase_map` | (a) v9 ↔ v27 phase-taxonomy reconciliation (KG's older 6-phase set ↔ the v27 chain). |
 | `apt_engine.legion` | (b) the 7 legion commanders + KG canonical node map; naesengmoon emits the gate verdict, hades realizes iff PASS. |
-| `apt_engine.gate_override` | audited escape hatch — no silent override; 24h TTL; permanent needs the literal phrase; only a FAIL is overridable. |
-| `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_reconcile / apt_legion`. |
-| `apt_engine.resolver` | config-resolver drift detection (stdlib core) + KG/jinja render (`.[resolver]`). Ported from SYMPOSIUM `resolver_prototype`. |
-| `apt_engine.gate_policy` | enforcement mode mapping (INFORMATIONAL advisory / BLOCKER fail-closed → PASS/FAIL/WOULD_FAIL/OPEN_REFUSED). |
-| `apt_engine.circuit_breaker` | 3-state breaker (CLOSED/OPEN/HALF_OPEN); redis-free `InMemoryStore` default, injectable clock. |
-| `apt_engine.opa` | OPA Rego policy gate — `StaticOPAPolicy` (fail-closed, testable) + HTTP client (`.[opa]`). |
+| `apt_engine.precondition` | measured precondition — establishes truth from a real pytest exit code (`evaluate_measured_default`, mandated `evaluate_measured_mandated_default`), never a caller bool. |
+| `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_gate_measured / apt_reconcile / apt_legion`. |
 
-The resolver/gate-resilience modules are ported from the dgx-only SYMPOSIUM
-prototypes (`gj3447/symposium` `THEORY/APT/{resolver,gate_endpoint}_prototype`),
-re-layered so the deterministic cores (drift detection, breaker FSM, enforcement
-mapping, policy decision) are stdlib + unit-testable, and the I/O (neo4j, jinja,
-redis, OPA HTTP) is optional/pluggable.
+### `apt_engine.contrib` — layer-2 ports (NOT the core)
+
+`gate_policy`, `circuit_breaker`, `opa`, `gate_override`, and `resolver` are
+ported from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
+`THEORY/APT/{resolver,gate_endpoint}_prototype`). They are **not wired** into
+`evaluate_transition` and are **not** part of the core public surface — import
+them from `apt_engine.contrib`. The gate-server / OPA / config-resolver runtime is
+the dgx/SYMPOSIUM layer's job (`adr-apt-dgx-runtime-delegation-2026-05-25`); the
+scope-fork decision (CUT, not WIRE) is recorded in
+[`docs/ADR-0002-scope-fork-cut-belt.md`](docs/ADR-0002-scope-fork-cut-belt.md).
 
 Both `phases` and `gate` are transcribed from the canonical contract ADRs:
 - `bhgman_tool/ADRs/apt-phase-contract-2026-05-25.md`
@@ -82,10 +83,12 @@ No-install dev loop also works: `PYTHONPATH=src python3 -m pytest -q`.
 ```bash
 apt-engine chain                       # print the canonical phase chain + contracts
 apt-engine detect /path/to/repo        # detect current APT phase from on-disk artifacts
-apt-engine gate SA SP                  # evaluate a transition -> PASS
-apt-engine gate SP ST --skip           # -> SKIP (never PASS)
-apt-engine gate ST SCW --precondition-unmet   # -> FAIL + v27_phase_scw_dispatch_guard
-apt-engine gate MetaReview MetaReview  # -> FAIL (self_application_forbidden)
+apt-engine gate SA SP --precondition-met   # -> PASS (exit 0)
+apt-engine gate SA SP                      # -> FAIL, exit 1 (fail-closed: precondition unstated)
+apt-engine gate SP ST --skip               # -> SKIP (never PASS), exit 1
+apt-engine gate SCW MetaReview --measure tests/impact --impact-manifest apt-impact.json
+                                           #   -> gate on a REAL pytest run of the MANDATED tests
+apt-engine gate MetaReview MetaReview      # -> FAIL (self_application_forbidden), exit 1
 ```
 
 ## Library

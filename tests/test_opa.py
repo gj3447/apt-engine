@@ -1,6 +1,6 @@
 """OPA policy evaluation — StaticOPAPolicy is fail-closed and testable sans server."""
 
-from apt_engine.opa import OPADecision, OPAPolicy, StaticOPAPolicy
+from apt_engine.contrib.opa import OPADecision, OPAPolicy, StaticOPAPolicy
 
 
 def test_static_policy_allow_and_deny():
