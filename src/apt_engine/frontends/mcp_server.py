@@ -20,7 +20,7 @@ from ..gate import Verdict, evaluate_transition
 from ..legion import COMMANDERS, KG_CANONICAL_NODE, hades_realizes
 from ..phase_map import V9_TO_V27, to_v9, to_v27
 from ..phases import PHASES
-from ..precondition import evaluate_measured_default
+from ..precondition import evaluate_measured_default, evaluate_measured_mandated_default
 
 
 def _chain() -> list[dict[str, Any]]:
@@ -48,11 +48,18 @@ def _gate(from_phase: str, to_phase: str, precondition_met: bool = False,
 
 
 def _gate_measured(from_phase: str, to_phase: str, target: str,
+                   manifest_path: str | None = None,
                    conditional: bool = False, skipped: bool = False) -> dict[str, Any]:
     # Measured precondition: real pytest on `target`, no caller bool and no
-    # injectable runner (frontier #1 wired). For SCW->MetaReview and peers.
-    r = evaluate_measured_default(from_phase, to_phase, target=target,
-                                  conditional=conditional, skipped=skipped)
+    # injectable runner (frontier #1 wired). With manifest_path, bind to the
+    # transition's MANDATED impact_tests (H-C) so an unrelated dir fails.
+    if manifest_path is not None:
+        r = evaluate_measured_mandated_default(from_phase, to_phase, target=target,
+                                               manifest_path=manifest_path,
+                                               conditional=conditional, skipped=skipped)
+    else:
+        r = evaluate_measured_default(from_phase, to_phase, target=target,
+                                      conditional=conditional, skipped=skipped)
     return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
             "reason": r.reason, "gate_version": r.gate_version}
 

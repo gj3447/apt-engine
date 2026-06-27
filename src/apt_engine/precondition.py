@@ -20,9 +20,11 @@ deterministic mapping exit_code -> verdict is).
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from .gate import GateResult, evaluate_transition
@@ -36,6 +38,16 @@ __all__ = [
     "evaluate_measured",
     "evaluate_measured_default",
     "pytest_runner",
+    # mandated impact-test binding (H-C: target bound to the phase's tests)
+    "ImpactSpec",
+    "NodeCollector",
+    "IdRunner",
+    "load_impact_manifest",
+    "measure_mandated",
+    "evaluate_measured_mandated",
+    "pytest_collector",
+    "pytest_id_runner",
+    "evaluate_measured_mandated_default",
 ]
 
 #: Transitions whose precondition is a LOCAL, externally-measurable fact (the
@@ -122,9 +134,9 @@ def evaluate_measured_default(
     pytest process. This is the entry the CLI/MCP frontends use so that the
     measured path can never be bypassed by injection.
 
-    NOTE (remaining gap): `target` is not yet bound to the phase's *mandated*
-    impact_tests (so pointing it at unrelated passing tests still passes). Binding
-    `target` to the KG/manifest impact_tests is tracked as follow-up frontier work.
+    NOTE: this WEAK variant runs whatever is under `target`, so an unrelated
+    passing dir satisfies it. For the mandated binding (target bound to the
+    phase's declared impact_tests), use `evaluate_measured_mandated_default`.
     """
     return evaluate_measured(
         from_phase,
@@ -133,4 +145,157 @@ def evaluate_measured_default(
         target=target,
         conditional=conditional,
         skipped=skipped,
+    )
+
+
+# --------------------------------------------------------------------------- #
+#  Mandated impact-test binding (H-C)                                          #
+#  The bare measured gate above runs WHATEVER is under `target`, so an         #
+#  unrelated passing dir satisfies it. Below, the precondition is met only     #
+#  when the tests the transition MANDATES (declared in a trusted manifest,     #
+#  not chosen by the caller) are actually collected under the target AND pass. #
+# --------------------------------------------------------------------------- #
+
+NodeCollector = Callable[[str], list[str]]  #: target -> collected pytest node ids
+IdRunner = Callable[[list[str]], int]  #: node ids -> exit code
+
+
+@dataclass(frozen=True)
+class ImpactSpec:
+    """The mandated impact-tests a transition's precondition requires.
+
+    `required` is a non-empty tuple of node-id substrings: a run satisfies the
+    precondition only if the collected tests intersect these AND pass. The
+    substrings come from a trusted manifest keyed by transition, NOT from the
+    caller — so a caller cannot redefine "mandated" to match a dummy test.
+    """
+
+    transition: tuple[str, str]
+    required: tuple[str, ...]
+
+
+def _txn_key(from_phase: str, to_phase: str) -> str:
+    return f"{from_phase}->{to_phase}"
+
+
+def load_impact_manifest(path: str) -> dict[str, ImpactSpec]:
+    """Load `{"SCW->MetaReview": {"required": ["impact"]}}` -> {key: ImpactSpec}."""
+    data = json.loads(Path(path).read_text())
+    out: dict[str, ImpactSpec] = {}
+    for key, spec in data.items():
+        frm, _, to = key.partition("->")
+        out[key] = ImpactSpec(transition=(frm, to), required=tuple(spec.get("required", ())))
+    return out
+
+
+def measure_mandated(
+    target: str,
+    required: tuple[str, ...],
+    *,
+    collector: NodeCollector,
+    runner: IdRunner,
+) -> PreconditionEvidence:
+    """Met iff the MANDATED tests are present under `target` AND pass.
+
+    exit_code carries the signal: 4 = nothing mandated declared, 5 = no mandated
+    test collected (the forge case), else the runner's real exit code on exactly
+    the mandated node ids.
+    """
+    if not required:
+        return PreconditionEvidence(met=False, exit_code=4, source="impact:no-mandated-declared")
+    collected = collector(target)
+    matched = [nid for nid in collected if any(r in nid for r in required)]
+    if not matched:
+        return PreconditionEvidence(
+            met=False, exit_code=5, source=f"impact:{target}:0-mandated-collected"
+        )
+    code = runner(matched)
+    return PreconditionEvidence(
+        met=(code == 0), exit_code=code, source=f"impact:{target}:{len(matched)}-mandated"
+    )
+
+
+def evaluate_measured_mandated(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    manifest: dict[str, ImpactSpec],
+    collector: NodeCollector,
+    runner: IdRunner,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> GateResult:
+    """Evaluate a transition whose precondition is its MANDATED impact_tests.
+
+    The mandated tests are resolved from `manifest` by transition (not caller
+    args). If the transition is absent from the manifest it is not measurable
+    here and the gate FAILs closed.
+    """
+    spec = manifest.get(_txn_key(from_phase, to_phase))
+    required = spec.required if spec else ()
+    evidence = measure_mandated(target, required, collector=collector, runner=runner)
+    return evaluate_transition(
+        from_phase, to_phase, precondition_met=evidence.met,
+        conditional=conditional, skipped=skipped,
+    )
+
+
+def pytest_collector(target: str) -> list[str]:
+    """Production collector: `pytest --co -q target` -> ABSOLUTE node ids.
+
+    pytest prints ids relative to rootdir(=target); we absolutise them so the
+    runner can execute exactly those ids from any working directory.
+    """
+    base = Path(target).resolve()
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "--co", "-q", str(base)],
+        capture_output=True, text=True,
+    )
+    ids: list[str] = []
+    for line in completed.stdout.splitlines():
+        line = line.strip()
+        if "::" not in line:
+            continue
+        file_part = line.split("::", 1)[0]
+        ids.append(line if Path(file_part).is_absolute() else str(base / line))
+    return ids
+
+
+def pytest_id_runner(node_ids: list[str]) -> int:
+    """Production runner: run exactly the mandated node ids; return the exit code.
+
+    Never runs with an empty id list (that would mean "run everything") — an
+    empty mandated set is handled upstream in `measure_mandated` as UNMET.
+    """
+    if not node_ids:
+        return 5  # pytest's "no tests collected" code -> treated as unmet
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", *node_ids],
+        capture_output=True,
+    )
+    return completed.returncode
+
+
+def evaluate_measured_mandated_default(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    manifest_path: str,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> GateResult:
+    """Production mandated gate — hardwires the real pytest collector + runner.
+
+    No injectable collector/runner: the caller supplies only `target` and the
+    manifest path; the mandated tests and their pass/fail are established by real
+    pytest. Pointing `target` at an unrelated passing dir FAILs (its tests do not
+    match the manifest's mandated node ids).
+    """
+    manifest = load_impact_manifest(manifest_path)
+    return evaluate_measured_mandated(
+        from_phase, to_phase, target=target, manifest=manifest,
+        collector=pytest_collector, runner=pytest_id_runner,
+        conditional=conditional, skipped=skipped,
     )
