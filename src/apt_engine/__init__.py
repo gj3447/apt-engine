@@ -17,6 +17,7 @@ from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_comma
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .precondition import (
     MEASURABLE_TRANSITIONS,
+    ImpactReq,
     ImpactSpec,
     PreconditionEvidence,
     TestRunner,
@@ -58,6 +59,7 @@ __all__ = [
     "evaluate_measured_default",
     "pytest_runner",
     # mandated impact-test binding (H-C)
+    "ImpactReq",
     "ImpactSpec",
     "load_impact_manifest",
     "measure_mandated",

@@ -159,12 +159,18 @@ def emit_forge_rejected_phase(backend, cid: str) -> str:
     FAIL) cannot masquerade as a rejection here (red-team MED-3). Returns a
     met/exit summary.
     """
-    from apt_engine.precondition import measure_mandated, pytest_collector, pytest_id_runner
+    from apt_engine.precondition import (
+        ImpactReq,
+        measure_mandated,
+        pytest_collector,
+        pytest_id_runner,
+    )
 
     with tempfile.TemporaryDirectory() as d:
         Path(d, "test_unrelated.py").write_text("def test_ok():\n    assert True\n")
         evidence = measure_mandated(
-            d, ("impact",), collector=pytest_collector, runner=pytest_id_runner)
+            d, (ImpactReq("test_scw.py::test_contract"),),
+            collector=pytest_collector, runner=pytest_id_runner)
     if evidence.met is False and evidence.exit_code == 5:
         backend.ship([
             _ev(cid, "mandated_forge_rejected", exit_code=evidence.exit_code,
@@ -173,19 +179,54 @@ def emit_forge_rejected_phase(backend, cid: str) -> str:
     return f"met={evidence.met} exit={evidence.exit_code}"
 
 
-def emit_mandated_accepts_phase(backend, cid: str) -> str:
-    """The MANDATED gate ACCEPTS a dir whose mandated impact test passes.
+def emit_content_forge_rejected_phase(backend, cid: str) -> str:
+    """The MANDATED gate REJECTS a same-named test whose CONTENT differs from the
+    pinned sha256 (the HIGH-2 content-forge close).
 
-    Positive-path sibling of the forge gate (red-team MED-3): together they pin
-    genuine-pass -> PASS AND forge -> FAIL, so neither an allow-all nor a deny-all
-    regression can keep both gates GREEN. Returns the observed verdict.
+    Writes a test at the exact mandated node id but with FORGED content, pins the
+    CANONICAL content's sha, and ships only on a true content-forge (met False AND
+    exit_code 6 = sha mismatch). Returns a met/exit summary.
     """
+    import hashlib
+
+    from apt_engine.precondition import (
+        ImpactReq,
+        measure_mandated,
+        pytest_collector,
+        pytest_id_runner,
+    )
+
+    canonical = b"def test_contract():\n    assert True\n"
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "test_scw_impact.py").write_text("def test_contract():\n    assert True  # forged\n")
+        req = ImpactReq("test_scw_impact.py::test_contract", hashlib.sha256(canonical).hexdigest())
+        evidence = measure_mandated(d, (req,), collector=pytest_collector, runner=pytest_id_runner)
+    if evidence.met is False and evidence.exit_code == 6:
+        backend.ship([
+            _ev(cid, "content_forge_rejected", exit_code=evidence.exit_code,
+                source=evidence.source, transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
+        ])
+    return f"met={evidence.met} exit={evidence.exit_code}"
+
+
+def emit_mandated_accepts_phase(backend, cid: str) -> str:
+    """The MANDATED gate ACCEPTS the exact, sha-pinned mandated test passing.
+
+    Positive-path sibling of the forge gates (red-team MED-3): together they pin
+    genuine-pass -> PASS AND forge -> FAIL, so neither an allow-all nor a deny-all
+    regression can keep all gates GREEN. Returns the observed verdict.
+    """
+    import hashlib
+
     from apt_engine.precondition import evaluate_measured_mandated_default
 
     with tempfile.TemporaryDirectory() as d:
-        Path(d, "test_scw_impact.py").write_text("def test_scw_impact():\n    assert True\n")
+        tf = Path(d, "test_scw_impact.py")
+        tf.write_text("def test_contract():\n    assert True\n")
         manifest = Path(d, "apt-impact.json")
-        manifest.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact"]}}))
+        manifest.write_text(json.dumps({"SCW->MetaReview": {"required": [
+            {"node_id": "test_scw_impact.py::test_contract",
+             "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
         result = evaluate_measured_mandated_default(
             "SCW", "MetaReview", target=d, manifest_path=str(manifest))
     if result.verdict.value == "PASS":
@@ -204,5 +245,6 @@ def run_apt_fix_pipeline(backend, cid: str) -> dict:
         "measured_block_verdict": emit_measured_block_phase(backend, cid),
         "cli_measured_exit": emit_cli_measured_phase(backend, cid),
         "forge_rejected_summary": emit_forge_rejected_phase(backend, cid),
+        "content_forge_rejected_summary": emit_content_forge_rejected_phase(backend, cid),
         "mandated_accepts_verdict": emit_mandated_accepts_phase(backend, cid),
     }
