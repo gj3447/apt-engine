@@ -70,8 +70,9 @@ def test_mandated_rejects_unrelated_passing_dir(capsys, tmp_path):
     assert rc == 1 and out["verdict"] == "FAIL"
 
 
-def test_mandated_accepts_real_impact_test(capsys, tmp_path):
-    # a real, passing MANDATED impact test (node id matches 'impact') unlocks it.
+def test_mandated_accepts_name_matching_passing_test(capsys, tmp_path):
+    # a passing test whose node id MATCHES the mandated substring unlocks it.
+    # (name-based binding; it does not assert the test did "real" impact work.)
     (tmp_path / "test_scw_impact.py").write_text("def test_scw_impact():\n    assert True\n")
     rc, out = _run(
         capsys,
