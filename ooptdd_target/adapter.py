@@ -181,11 +181,13 @@ def emit_forge_rejected_phase(backend, cid: str) -> str:
 
 def emit_content_forge_rejected_phase(backend, cid: str) -> str:
     """The MANDATED gate REJECTS a same-named test whose CONTENT differs from the
-    pinned sha256 (the HIGH-2 content-forge close).
+    pinned sha256 (content-DRIFT rejection).
 
     Writes a test at the exact mandated node id but with FORGED content, pins the
-    CANONICAL content's sha, and ships only on a true content-forge (met False AND
-    exit_code 6 = sha mismatch). Returns a met/exit summary.
+    CANONICAL content's sha, and ships only on a true content-drift mismatch (met
+    False AND exit_code 6). NB: sha defends a TRUSTED manifest against on-disk
+    drift — it does not stop a forger who writes the manifest (see TRUST BOUNDARY
+    in apt_engine.precondition). Returns a met/exit summary.
     """
     import hashlib
 
@@ -213,22 +215,27 @@ def emit_mandated_accepts_phase(backend, cid: str) -> str:
     """The MANDATED gate ACCEPTS the exact, sha-pinned mandated test passing.
 
     Positive-path sibling of the forge gates (red-team MED-3): together they pin
-    genuine-pass -> PASS AND forge -> FAIL, so neither an allow-all nor a deny-all
-    regression can keep all gates GREEN. Returns the observed verdict.
+    genuine-pass -> PASS AND forge -> FAIL. This phase deliberately uses an
+    ANCESTOR-config topology (pyproject at the root, test in a subdir) so the loop
+    exercises the real pytest rootdir path the red-team-3 collector bug lived in
+    (the loop must not itself be topology-fake-green). Returns the observed verdict.
     """
     import hashlib
 
     from apt_engine.precondition import evaluate_measured_mandated_default
 
     with tempfile.TemporaryDirectory() as d:
-        tf = Path(d, "test_scw_impact.py")
+        Path(d, "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+        sub = Path(d, "tests", "impact")
+        sub.mkdir(parents=True)
+        tf = sub / "test_scw_impact.py"
         tf.write_text("def test_contract():\n    assert True\n")
         manifest = Path(d, "apt-impact.json")
         manifest.write_text(json.dumps({"SCW->MetaReview": {"required": [
             {"node_id": "test_scw_impact.py::test_contract",
              "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
         result = evaluate_measured_mandated_default(
-            "SCW", "MetaReview", target=d, manifest_path=str(manifest))
+            "SCW", "MetaReview", target=str(sub), manifest_path=str(manifest))
     if result.verdict.value == "PASS":
         backend.ship([
             _ev(cid, "mandated_accepts", verdict=result.verdict.value,
