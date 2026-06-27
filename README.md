@@ -115,6 +115,13 @@ This repo dogfoods exactly that: CI's `gate` job runs `apt-engine gate SCW MetaR
 --measure tests --impact-manifest apt-impact.json` (`.github/workflows/ci.yml`), and
 `apt-impact.json` pins this repo's own mandated tests (`tests/impact/`).
 
+The manifest trust root is **pluggable** via the `ManifestSource` seam:
+`FileManifestSource` (the caller / committed file) or — the *non-caller* trust root —
+`apt_engine.contrib.kg_manifest.KgManifestSource` (`pip install '.[kg]'`), which
+resolves the mandated node ids + shas from the KG contract
+`(:AptEngine)-[:MANDATES_IMPACT]->(:AptImpactTest)` and runs on dgx. See
+[`docs/ADR-0004`](docs/ADR-0004-kg-manifest-source.md).
+
 ## Library
 
 ```python
