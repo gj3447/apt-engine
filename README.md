@@ -96,6 +96,25 @@ apt-engine gate SCW MetaReview --measure tests/impact --impact-manifest apt-impa
 apt-engine gate MetaReview MetaReview      # -> FAIL (self_application_forbidden), exit 1
 ```
 
+## Measured gate & the trusted runner (CI)
+
+The measured `SCW→MetaReview` gate runs the transition's **mandated impact tests**
+(declared as exact, optionally sha256-pinned node ids in a manifest) and passes only
+if they actually run green. It shells out to pytest, so install the runtime dep:
+
+```bash
+pip install '.[gate]'   # the measured gate needs pytest at runtime
+```
+
+**Read before relying on it.** This gate is **config-isolated defence-in-depth + a
+correctness aid, NOT a security boundary.** A party that controls the working tree
+can still subvert it (a `conftest.py` hook can rewrite a test outcome; the manifest
+is caller-supplied). The sound use is a **trusted runner (CI) against a committed,
+review-gated manifest** — see [`docs/ADR-0003`](docs/ADR-0003-trusted-runner-and-manifest-trust-root.md).
+This repo dogfoods exactly that: CI's `gate` job runs `apt-engine gate SCW MetaReview
+--measure tests --impact-manifest apt-impact.json` (`.github/workflows/ci.yml`), and
+`apt-impact.json` pins this repo's own mandated tests (`tests/impact/`).
+
 ## Library
 
 ```python

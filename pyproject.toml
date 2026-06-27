@@ -16,10 +16,11 @@ dependencies = []
 
 [project.optional-dependencies]
 mcp = ["fastmcp>=0.2"]
+gate = ["pytest>=7"]                    # the measured precondition gate runs pytest at runtime
 resolver = ["neo4j>=5", "jinja2>=3"]   # KG-backed config resolver + marker render
 opa = ["httpx>=0.24"]                  # OPA Rego policy gate (layer-2)
 redis = ["redis>=5"]                   # redis-backed circuit breaker (in-memory default)
-dev = ["pytest>=7", "ruff"]
+dev = ["pytest>=7", "ruff", "import-linter>=2"]
 
 [project.scripts]
 apt-engine = "apt_engine.cli:main"

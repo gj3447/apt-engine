@@ -9,10 +9,20 @@ import apt_engine
 
 
 _BELT = {
-    "enforce", "EnforcementMode", "OutwardVerdict",
-    "CircuitBreaker", "InMemoryStore", "State",
-    "GateOverride", "make_override", "override_allows", "disclosure",
-    "OPADecision", "OPAPolicy", "StaticOPAPolicy", "HTTPOPAClient",
+    "enforce",
+    "EnforcementMode",
+    "OutwardVerdict",
+    "CircuitBreaker",
+    "InMemoryStore",
+    "State",
+    "GateOverride",
+    "make_override",
+    "override_allows",
+    "disclosure",
+    "OPADecision",
+    "OPAPolicy",
+    "StaticOPAPolicy",
+    "HTTPOPAClient",
 }
 
 
@@ -59,6 +69,9 @@ def test_importing_core_does_not_load_contrib():
         "sys.exit(1 if leaked else 0)"
     )
     r = subprocess.run(
-        [sys.executable, "-c", probe], capture_output=True, text=True, env=os.environ.copy(),
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
     )
     assert r.returncode == 0, f"`import apt_engine` pulled in contrib: {r.stdout.strip()}"
