@@ -1,8 +1,10 @@
 """apt-engine CLI.
 
-  apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
-  apt-engine chain                # print canonical phase chain + contracts
-  apt-engine gate <from> <to>     # evaluate a transition (preconds via flags)
+apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
+apt-engine chain                # print canonical phase chain + contracts
+apt-engine gate <from> <to>     # evaluate a transition; exit 0 iff PASS.
+                                #   default fail-closed; --precondition-met to assert,
+                                #   --measure TARGET to gate on a real pytest run.
 """
 
 from __future__ import annotations
@@ -13,8 +15,9 @@ import sys
 from typing import Sequence
 
 from .detect import detect_phase
-from .gate import evaluate_transition
+from .gate import Verdict, evaluate_transition
 from .phases import PHASES
+from .precondition import evaluate_measured_default, evaluate_measured_mandated_default
 
 
 def _cmd_detect(args: argparse.Namespace) -> int:
@@ -40,13 +43,37 @@ def _cmd_chain(_args: argparse.Namespace) -> int:
 
 
 def _cmd_gate(args: argparse.Namespace) -> int:
-    result = evaluate_transition(
-        args.from_phase,
-        args.to_phase,
-        precondition_met=not args.precondition_unmet,
-        conditional=args.conditional,
-        skipped=args.skip,
-    )
+    if args.measure is not None and args.impact_manifest is not None:
+        # Mandated measured path (H-C): the precondition is the transition's
+        # MANDATED impact_tests (from the manifest) actually running green under
+        # `target` — an unrelated passing dir FAILs.
+        result = evaluate_measured_mandated_default(
+            args.from_phase,
+            args.to_phase,
+            target=args.measure,
+            manifest_path=args.impact_manifest,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
+    elif args.measure is not None:
+        # Bare measured path: a REAL pytest run on `target` (no caller bool, no
+        # injectable runner). WEAK — runs whatever is under target; prefer
+        # --impact-manifest to bind to the phase's mandated tests.
+        result = evaluate_measured_default(
+            args.from_phase,
+            args.to_phase,
+            target=args.measure,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
+    else:
+        result = evaluate_transition(
+            args.from_phase,
+            args.to_phase,
+            precondition_met=args.precondition_met,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
     print(
         json.dumps(
             {
@@ -59,7 +86,9 @@ def _cmd_gate(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
-    return 0
+    # Fail-closed at the PROCESS boundary too: only an advancing PASS exits 0;
+    # FAIL/SKIP/CONDITIONAL exit nonzero so `&&` / `set -e` / CI pipelines block.
+    return 0 if result.verdict is Verdict.PASS else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,7 +105,24 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gate", help="evaluate a phase transition")
     g.add_argument("from_phase")
     g.add_argument("to_phase")
-    g.add_argument("--precondition-unmet", action="store_true")
+    g.add_argument(
+        "--precondition-met",
+        action="store_true",
+        help="assert the destination precondition holds (default: fail-closed / unmet)",
+    )
+    g.add_argument(
+        "--measure",
+        metavar="TARGET",
+        default=None,
+        help="measure the precondition by running pytest on TARGET (overrides --precondition-met)",
+    )
+    g.add_argument(
+        "--impact-manifest",
+        metavar="PATH",
+        default=None,
+        help="with --measure: bind to the transition's MANDATED impact_tests "
+        "declared in PATH (an unrelated passing dir then fails)",
+    )
     g.add_argument("--conditional", action="store_true")
     g.add_argument("--skip", action="store_true")
     g.set_defaults(func=_cmd_gate)

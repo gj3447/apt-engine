@@ -21,7 +21,9 @@ def render(body: str, cfg: dict[str, Any]) -> str:
         from jinja2 import Environment, StrictUndefined
         from jinja2.exceptions import UndefinedError
     except ImportError as exc:  # pragma: no cover - serve-time only
-        raise SystemExit("resolver render needs the 'resolver' extra: pip install -e '.[resolver]'") from exc
+        raise SystemExit(
+            "resolver render needs the 'resolver' extra: pip install -e '.[resolver]'"
+        ) from exc
 
     env = Environment(undefined=StrictUndefined, autoescape=False)
     template = env.from_string(body)
