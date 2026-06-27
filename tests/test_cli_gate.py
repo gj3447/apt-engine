@@ -96,3 +96,23 @@ def test_mandated_rejects_content_forge(capsys, tmp_path):
         capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 1 and out["verdict"] == "FAIL"
+
+
+def test_mandated_under_ancestor_pytest_config(capsys, tmp_path):
+    # red-team HIGH: the documented `--measure <subdir>` case with a project
+    # pytest config at the ROOT must work end-to-end (was crashing/false-reject).
+    import hashlib
+    import json
+
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+    sub = tmp_path / "tests" / "impact"
+    sub.mkdir(parents=True)
+    tf = sub / "test_scw.py"
+    tf.write_text("def test_contract():\n    assert True\n")
+    man = tmp_path / "apt-impact.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    rc, out = _run(
+        capsys, ["gate", "SCW", "MetaReview", "--measure", str(sub), "--impact-manifest", str(man)],
+    )
+    assert rc == 0 and out["verdict"] == "PASS"
