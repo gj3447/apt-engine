@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .gate import GateResult, Verdict
+from ..gate import GateResult, Verdict
 
 __all__ = [
     "GateOverride",

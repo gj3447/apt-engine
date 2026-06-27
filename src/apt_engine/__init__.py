@@ -1,18 +1,21 @@
 """apt-engine — deterministic APT phase-contract engine.
 
-Public surface:
-  phases : canonical SA->SP->ST->SCW->MetaReview->Cleanup chain + contracts.
-  gate   : Verdict algebra (PASS/FAIL/SKIP/CONDITIONAL; SKIP != PASS).
-  detect : on-disk phase detection (de-drifted from the bhgman_tool skeleton).
+Public surface (the deterministic stdlib core):
+  phases       : canonical SA->SP->ST->SCW->MetaReview->Cleanup chain + contracts.
+  gate         : Verdict algebra (PASS/FAIL/SKIP/CONDITIONAL; SKIP != PASS).
+  detect       : on-disk phase detection (de-drifted from the bhgman_tool skeleton).
+  precondition : measured precondition (truth by pytest, not caller bool).
+  phase_map / legion : v9<->v27 reconciliation + legion commander wiring.
+
+The layer-2 ports (gate_policy / circuit_breaker / opa / gate_override / resolver)
+are NOT part of this surface — they live in `apt_engine.contrib` and are unwired
+dgx-prototype ports. See `docs/ADR-0002`.
 """
 
 from __future__ import annotations
 
 from .detect import detect_phase
-from .circuit_breaker import CircuitBreaker, InMemoryStore, State
 from .gate import GateResult, Verdict, can_advance, evaluate_transition
-from .gate_override import GateOverride, disclosure, make_override, override_allows
-from .gate_policy import EnforcementMode, OutwardVerdict, enforce
 from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_commander
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .precondition import (
@@ -79,16 +82,7 @@ __all__ = [
     "commander",
     "verdict_commander",
     "hades_realizes",
-    # gate override (audited escape hatch)
-    "GateOverride",
-    "make_override",
-    "override_allows",
-    "disclosure",
-    # gate enforcement + resilience (ported from gate_endpoint_prototype)
-    "EnforcementMode",
-    "OutwardVerdict",
-    "enforce",
-    "CircuitBreaker",
-    "InMemoryStore",
-    "State",
+    # NOTE: the layer-2 ports (GateOverride / enforce / CircuitBreaker / OPA /
+    # resolver) are intentionally NOT exported here — they are unwired dgx-
+    # prototype ports under `apt_engine.contrib`. See docs/ADR-0002.
 ]
