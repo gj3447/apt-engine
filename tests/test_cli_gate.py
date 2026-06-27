@@ -277,3 +277,14 @@ def test_path_qualified_sibling_basenames_pass(tmp_path):
     (tmp_path / "integration" / "test_x.py").write_text("def test_foo():\n    assert True\n")
     man = _sha_manifest(tmp_path, "unit/test_x.py::test_foo", u)
     assert _mandated_default(tmp_path, man).verdict.value == "PASS"
+
+
+def test_arg_injection_via_manifest_node_id_fails_closed(tmp_path):
+    # a node id whose file part starts with '-' must not inject a pytest argument;
+    # the `--` separator makes it a (non-existent) path -> fail-closed.
+    import json
+
+    (tmp_path / "test_scw.py").write_text("def test_contract():\n    assert True\n")
+    man = tmp_path / "m.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": ["--rootdir=/evil::test_contract"]}}))
+    assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
