@@ -104,7 +104,7 @@ detect_phase("/path/to/repo")["current_phase"]   # 'SCW' | 'unknown' | ...
 ## Tests
 
 ```bash
-PYTHONPATH=src python3 -m pytest -q     # 21 passing
+PYTHONPATH=src python3 -m pytest -q     # all green (stdlib core + ports + ooptdd fix harness)
 ```
 
 The canonical-order test is **revert-proof** (mutation-tested): reordering the

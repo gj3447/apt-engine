@@ -41,5 +41,10 @@ def test_missing_path_raises():
 def test_detected_map_uses_canonical_chain_keys():
     report = detect_phase(str(FIXTURES / "scw_repo"))
     assert list(report["phases_detected"].keys()) == [
-        "SA", "SP", "ST", "SCW", "MetaReview", "Cleanup",
+        "SA",
+        "SP",
+        "ST",
+        "SCW",
+        "MetaReview",
+        "Cleanup",
     ]

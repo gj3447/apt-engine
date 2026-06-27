@@ -26,7 +26,11 @@ def test_find_markers_dedup_sorted():
 
 
 def test_clean_template_is_ok():
-    body = "budget {{cfg.vibe_coding_sweet_min}}-{{cfg.vibe_coding_sweet_max}} lines, "             "{{cfg.lens_count_constitutional}} lenses, {{cfg.contract_default_fields}} fields, "             "{{cfg.st_decision_areas}} areas"
+    body = (
+        "budget {{cfg.vibe_coding_sweet_min}}-{{cfg.vibe_coding_sweet_max}} lines, "
+        "{{cfg.lens_count_constitutional}} lenses, {{cfg.contract_default_fields}} fields, "
+        "{{cfg.st_decision_areas}} areas"
+    )
     report = check_drift(body, CFG)
     assert report.ok
     assert report.missing_in_cfg == ()
