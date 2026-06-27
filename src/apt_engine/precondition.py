@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -350,27 +351,52 @@ def evaluate_measured_mandated(
     )
 
 
+# Isolate the TARGET's own pytest config — the gated party owns the working tree,
+# so its config is hostile-or-accidental input (red-team-4 BLOCKER/HIGH):
+#   -o addopts=          : neutralise a target `addopts=--collect-only` that would
+#                          let a RED test "pass" by never running.
+#   --import-mode=importlib : same-basename files in sibling dirs both collect
+#                          (no prepend import-mismatch that silently drops one).
+#   -p no:warnings       : warning summary lines can't become phantom node ids.
+#   -p no:cacheprovider  : no .pytest_cache writes under the target.
+# This is defence in depth, NOT a full security boundary — see the TRUST BOUNDARY
+# note above: a party controlling the EXECUTION ENVIRONMENT can still subvert a
+# working-tree gate; the sound guarantee needs a trusted runner (CI), not this.
+_PYTEST_ISOLATION = (
+    "-o", "addopts=",
+    "--import-mode=importlib",
+    "-p", "no:warnings",
+    "-p", "no:cacheprovider",
+)
+
+
 def pytest_collector(target: str) -> list[str]:
     """Production collector: collect under `target` -> ABSOLUTE node ids.
 
-    pytest prints node ids relative to its ROOTDIR, which is the nearest ancestor
-    with a pytest config (e.g. a project's pyproject.toml) — NOT necessarily
-    `target`. So we force `--rootdir=base` and invoke with `cwd=base` and arg `.`,
-    which makes the printed ids relative to `base`; joining `base/id` is then the
-    real on-disk path (no doubling). Verified against an ancestor-config tree.
+    pytest's rootdir is the nearest ancestor with a config (NOT necessarily
+    `target`), so we force `--rootdir=base`, `cwd=base`, arg `.`. The target's own
+    config is isolated (`_PYTEST_ISOLATION`). A collection PROBLEM (returncode not
+    in {0, 5}) fails closed (no ids -> 'missing'); each id is kept only if its file
+    part is a real `.py` on disk (drops phantom ids from stray `::` lines).
     """
     base = Path(target).resolve()
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "--co", "-q", "--rootdir", str(base), "."],
+        [sys.executable, "-m", "pytest", "--co", "-q", *_PYTEST_ISOLATION, "--rootdir", str(base), "."],
         cwd=str(base), capture_output=True, text=True,
     )
+    if completed.returncode not in (0, 5):
+        return []  # collection error (import mismatch, etc.) -> fail closed
     ids: list[str] = []
     for line in completed.stdout.splitlines():
         line = line.strip()
         if "::" not in line:
             continue
         file_part, _, rest = line.partition("::")
+        if not file_part.endswith(".py"):
+            continue  # a non-test line that happens to contain '::'
         abs_file = file_part if Path(file_part).is_absolute() else str(base / file_part)
+        if not Path(abs_file).is_file():
+            continue  # phantom id (e.g. from a warning message) -> drop
         ids.append(f"{abs_file}::{rest}")
     return ids
 
@@ -378,16 +404,21 @@ def pytest_collector(target: str) -> list[str]:
 def pytest_id_runner(node_ids: list[str]) -> int:
     """Production runner: run exactly the mandated (absolute) node ids; exit code.
 
-    Never runs with an empty id list (that would mean "run everything") — an
-    empty mandated set is handled upstream in `measure_mandated` as UNMET.
+    Config-isolated. Returns 0 only if the tests actually RAN and passed: exit 0
+    AND at least len(node_ids) reported "passed". The passed-count guard defeats a
+    target `--collect-only` (which would exit 0 with 0 passed). Empty id list -> 5.
     """
     if not node_ids:
         return 5  # pytest's "no tests collected" code -> treated as unmet
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *node_ids],
-        capture_output=True,
+        [sys.executable, "-m", "pytest", "-q", "--no-header", *_PYTEST_ISOLATION, *node_ids],
+        capture_output=True, text=True,
     )
-    return completed.returncode
+    m = re.search(r"(\d+) passed", completed.stdout)
+    passed = int(m.group(1)) if m else 0
+    if completed.returncode == 0 and passed >= len(node_ids):
+        return 0
+    return completed.returncode or 1
 
 
 def evaluate_measured_mandated_default(

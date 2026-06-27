@@ -116,3 +116,58 @@ def test_mandated_under_ancestor_pytest_config(capsys, tmp_path):
         capsys, ["gate", "SCW", "MetaReview", "--measure", str(sub), "--impact-manifest", str(man)],
     )
     assert rc == 0 and out["verdict"] == "PASS"
+
+
+def _mandated_default(target, manifest):
+    from apt_engine.precondition import evaluate_measured_mandated_default
+
+    return evaluate_measured_mandated_default(
+        "SCW", "MetaReview", target=str(target), manifest_path=str(manifest),
+    )
+
+
+def test_config_injection_collect_only_is_rejected(tmp_path):
+    # red-team-4 BLOCKER: a target pytest.ini `addopts=--collect-only` must NOT let
+    # a RED test "pass" by never running. The runner isolates the target config.
+    import hashlib
+    import json
+
+    tf = tmp_path / "test_scw.py"
+    tf.write_text("def test_contract():\n    assert False\n")
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --collect-only\n")
+    man = tmp_path / "m.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
+
+
+def test_same_basename_shadow_fails_closed(tmp_path):
+    # red-team-4 HIGH: a FAILING mandated test must not be shadowed by a sibling-dir
+    # same-basename passing file (import-mode=importlib collects both -> ambiguous).
+    import json
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "test_scw.py").write_text("def test_contract():\n    assert True\n")
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "test_scw.py").write_text("def test_contract():\n    assert False\n")
+    man = tmp_path / "m.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": ["test_scw.py::test_contract"]}}))
+    assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
+
+
+def test_warning_phantom_does_not_flip_gate(tmp_path):
+    # red-team-4 MEDIUM: a crafted warning containing '::' must not become a phantom
+    # node id that flips a genuinely-passing gate to FAIL.
+    import hashlib
+    import json
+
+    tf = tmp_path / "test_scw.py"
+    tf.write_text("def test_contract():\n    assert True\n")
+    (tmp_path / "test_noise.py").write_text(
+        "import warnings\nwarnings.warn('x /test_scw.py::test_contract')\n"
+        "def test_n():\n    assert True\n"
+    )
+    man = tmp_path / "m.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    assert _mandated_default(tmp_path, man).verdict.value == "PASS"
