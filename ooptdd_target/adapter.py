@@ -24,6 +24,9 @@ adapter is the instrumentation seam.
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import subprocess
 import sys
@@ -74,8 +77,9 @@ def _real_pytest(target: str) -> int:
 def emit_failclosed_phase(backend, cid: str) -> str:
     """Real MCP ``apt_gate`` with the precondition UNSTATED must NOT be PASS.
 
-    Ships 'gate_failed_closed' only when the real verdict is non-PASS (earned by
-    the fail-closed default). Returns the observed verdict.
+    Ships the fail-closed event only when the real verdict is non-PASS (earned by
+    the fail-closed default). The event-name literal lives ONLY in the ship() call
+    below, so renaming it really does flip the Longinus binding to UNBOUND.
     """
     apt_gate = build_tools()["apt_gate"]
     verdict = apt_gate("SA", "SP")["verdict"]  # precondition deliberately not asserted
@@ -90,7 +94,8 @@ def emit_failclosed_phase(backend, cid: str) -> str:
 def emit_measured_pass_phase(backend, cid: str) -> str:
     """Real PASSING pytest (exit 0) -> measured SCW->MetaReview PASS.
 
-    Ships 'precondition_measured_pass' carrying the real verdict. Returns it.
+    Ships the measured-pass event carrying the real verdict (literal only in the
+    ship() call below). Returns the verdict.
     """
     with tempfile.TemporaryDirectory() as d:
         Path(d, "test_impact_green.py").write_text("def test_ok():\n    assert True\n")
@@ -106,8 +111,8 @@ def emit_measured_pass_phase(backend, cid: str) -> str:
 def emit_measured_block_phase(backend, cid: str) -> str:
     """Real FAILING pytest (exit 1) -> measured SCW->MetaReview FAIL (block).
 
-    Ships 'precondition_measured_block' carrying the real failing verdict +
-    canonical gate_version. Returns the verdict.
+    Ships the measured-block event carrying the real failing verdict + canonical
+    gate_version (literal only in the ship() call below). Returns the verdict.
     """
     with tempfile.TemporaryDirectory() as d:
         Path(d, "test_impact_red.py").write_text("def test_no():\n    assert False\n")
@@ -121,10 +126,35 @@ def emit_measured_block_phase(backend, cid: str) -> str:
     return result.verdict.value
 
 
+def emit_cli_measured_phase(backend, cid: str) -> int:
+    """Run the REAL production CLI measured gate on a failing target.
+
+    Proves the WIRED production path (frontier #1, red-team H-B): `apt-engine gate
+    SCW MetaReview --measure <dir>` over a failing pytest must exit NONZERO and
+    report FAIL. Ships the cli-measured-block event only when the production CLI
+    genuinely blocks (exit != 0 AND verdict FAIL). Returns the observed exit code.
+    """
+    from apt_engine.cli import main
+
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "test_impact_red.py").write_text("def test_no():\n    assert False\n")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main(["gate", "SCW", "MetaReview", "--measure", d])
+    out = json.loads(buf.getvalue())
+    if rc != 0 and out["verdict"] == "FAIL":
+        backend.ship([
+            _ev(cid, "cli_measured_block", exit_code=rc, verdict=out["verdict"],
+                transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
+        ])
+    return rc
+
+
 def run_apt_fix_pipeline(backend, cid: str) -> dict:
-    """Loop entry point: exercise the two fixes under ``cid``, shipping earned events."""
+    """Loop entry point: exercise the fixes under ``cid``, shipping earned events."""
     return {
         "failclosed_verdict": emit_failclosed_phase(backend, cid),
         "measured_pass_verdict": emit_measured_pass_phase(backend, cid),
         "measured_block_verdict": emit_measured_block_phase(backend, cid),
+        "cli_measured_exit": emit_cli_measured_phase(backend, cid),
     }

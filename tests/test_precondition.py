@@ -6,7 +6,9 @@ the permanent unit home for the resolver behaviour.
 
 import inspect
 
-from apt_engine.precondition import evaluate_measured, measure
+import pytest
+
+from apt_engine.precondition import evaluate_measured, evaluate_measured_default, measure
 
 
 def test_measure_reads_truth_off_exit_code():
@@ -38,3 +40,41 @@ def test_measurement_cannot_bypass_structural_adjacency():
     r = evaluate_measured("SCW", "Cleanup", runner=lambda t: 0, target="impact")
     assert r.verdict.value == "FAIL"
     assert "non-adjacent" in r.reason
+
+
+def test_only_exit_zero_is_met():
+    # M-B: only exit 0 is met. collection-error(2), no-tests-collected(5), etc.
+    # must all be UNMET, so a non-{0,1} regression can't pass as fake-green.
+    assert measure(lambda t: 0, "impact").met is True
+    for code in (1, 2, 3, 4, 5):
+        assert measure(lambda t: code, "impact").met is False, f"exit {code} must be unmet"
+
+
+def test_evaluate_measured_has_no_kwargs_passthrough_and_fixed_params():
+    # M-A: the anti-fake-green property must be a PROPERTY, not a single spelling.
+    # No **kwargs -> a future second override (e.g. assume_met) is a hard TypeError,
+    # and the exact param whitelist trips if anyone widens the surface.
+    assert set(inspect.signature(evaluate_measured).parameters) == {
+        "from_phase", "to_phase", "runner", "target", "conditional", "skipped",
+    }
+    with pytest.raises(TypeError):
+        evaluate_measured("SCW", "MetaReview", runner=lambda t: 1, target="x", assume_met=True)
+
+
+def test_default_variant_exposes_no_injectable_runner():
+    # H-C / M-A: the production entry hardwires pytest_runner; a caller cannot
+    # forge the exit code by injecting a runner.
+    assert set(inspect.signature(evaluate_measured_default).parameters) == {
+        "from_phase", "to_phase", "target", "conditional", "skipped",
+    }
+    with pytest.raises(TypeError):
+        evaluate_measured_default("SCW", "MetaReview", runner=lambda t: 0, target="x")
+
+
+def test_default_variant_maps_real_runner_exit_code(monkeypatch):
+    import apt_engine.precondition as pre
+
+    monkeypatch.setattr(pre, "pytest_runner", lambda target: 1)
+    assert evaluate_measured_default("SCW", "MetaReview", target="impact").verdict.value == "FAIL"
+    monkeypatch.setattr(pre, "pytest_runner", lambda target: 0)
+    assert evaluate_measured_default("SCW", "MetaReview", target="impact").verdict.value == "PASS"

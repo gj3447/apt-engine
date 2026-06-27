@@ -2,7 +2,9 @@
 
   apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
   apt-engine chain                # print canonical phase chain + contracts
-  apt-engine gate <from> <to>     # evaluate a transition (fail-closed; --precondition-met to assert)
+  apt-engine gate <from> <to>     # evaluate a transition; exit 0 iff PASS.
+                                  #   default fail-closed; --precondition-met to assert,
+                                  #   --measure TARGET to gate on a real pytest run.
 """
 
 from __future__ import annotations
@@ -13,8 +15,9 @@ import sys
 from typing import Sequence
 
 from .detect import detect_phase
-from .gate import evaluate_transition
+from .gate import Verdict, evaluate_transition
 from .phases import PHASES
+from .precondition import evaluate_measured_default
 
 
 def _cmd_detect(args: argparse.Namespace) -> int:
@@ -40,13 +43,24 @@ def _cmd_chain(_args: argparse.Namespace) -> int:
 
 
 def _cmd_gate(args: argparse.Namespace) -> int:
-    result = evaluate_transition(
-        args.from_phase,
-        args.to_phase,
-        precondition_met=args.precondition_met,
-        conditional=args.conditional,
-        skipped=args.skip,
-    )
+    if args.measure is not None:
+        # Measured path: establish the precondition from a REAL pytest run on
+        # `target` (no caller bool, no injectable runner) — frontier #1 wired.
+        result = evaluate_measured_default(
+            args.from_phase,
+            args.to_phase,
+            target=args.measure,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
+    else:
+        result = evaluate_transition(
+            args.from_phase,
+            args.to_phase,
+            precondition_met=args.precondition_met,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
     print(
         json.dumps(
             {
@@ -59,7 +73,9 @@ def _cmd_gate(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
-    return 0
+    # Fail-closed at the PROCESS boundary too: only an advancing PASS exits 0;
+    # FAIL/SKIP/CONDITIONAL exit nonzero so `&&` / `set -e` / CI pipelines block.
+    return 0 if result.verdict is Verdict.PASS else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--precondition-met",
         action="store_true",
         help="assert the destination precondition holds (default: fail-closed / unmet)",
+    )
+    g.add_argument(
+        "--measure",
+        metavar="TARGET",
+        default=None,
+        help="measure the precondition by running pytest on TARGET (overrides --precondition-met)",
     )
     g.add_argument("--conditional", action="store_true")
     g.add_argument("--skip", action="store_true")

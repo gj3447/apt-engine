@@ -9,6 +9,15 @@
 #       <WORKSPACE>/PROJECT/PI/ooptdd-loop/.venv/bin/ooptdd-loop run ooptdd_target/requirements.yaml --json
 name: apt-engine-fix-harness
 
+# Enforce the OOPTDD rule ontology (R01-R14), not just LTDD trace-arrival.
+# HONEST SCOPE: the object/message-contract rules (R05-R09) are vacuously
+# satisfied here — APT's gate is a pure FUNCTIONAL substrate, not message-passing
+# objects, so there are no MessageContracts to declare. What this harness really
+# verifies is the LTDD trace-gate + Longinus-binding subset under enforcement.
+methodology:
+  name: OOPTDD_methodology_v1
+  enforce: true
+
 target:
   mode: in_process
   callable: ooptdd_target.adapter:run_apt_fix_pipeline   # called as run_apt_fix_pipeline(backend, cid)
@@ -17,6 +26,7 @@ target:
 
 requirements:
   - id: REQ-GATE-FAIL-CLOSED
+    kind: guiding
     description: the MCP gate frontend fails closed when the precondition is unstated
     gate:
       - {event: gate_failed_closed, op: "==", count: 1}
@@ -45,3 +55,13 @@ requirements:
       source: ooptdd_target/adapter.py
       symbol: emit_measured_block_phase
       must_emit: precondition_measured_block
+
+  - id: REQ-CLI-MEASURED-BLOCK
+    description: the WIRED production CLI measured gate blocks (exit!=0, FAIL) on a failing target
+    gate:
+      - {event: cli_measured_block, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_cli_measured_phase
+      must_emit: cli_measured_block
