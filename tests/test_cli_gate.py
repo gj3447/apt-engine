@@ -242,8 +242,20 @@ def _sha_manifest(tmp_path, node_id, test_file):
     import json
 
     man = tmp_path / "m.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": node_id, "sha256": hashlib.sha256(test_file.read_bytes()).hexdigest()}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [
+                        {
+                            "node_id": node_id,
+                            "sha256": hashlib.sha256(test_file.read_bytes()).hexdigest(),
+                        }
+                    ]
+                }
+            }
+        )
+    )
     return man
 
 
@@ -286,5 +298,7 @@ def test_arg_injection_via_manifest_node_id_fails_closed(tmp_path):
 
     (tmp_path / "test_scw.py").write_text("def test_contract():\n    assert True\n")
     man = tmp_path / "m.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": ["--rootdir=/evil::test_contract"]}}))
+    man.write_text(
+        json.dumps({"SCW->MetaReview": {"required": ["--rootdir=/evil::test_contract"]}})
+    )
     assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
