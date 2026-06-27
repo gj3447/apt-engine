@@ -52,30 +52,47 @@ def test_measured_failing_target_exits_nonzero(capsys, tmp_path):
     assert rc == 1 and out["verdict"] == "FAIL"
 
 
-def _manifest(tmp_path):
+def test_mandated_rejects_unrelated_dir(capsys, tmp_path):
+    # H-C: a dir lacking the EXACT mandated node id does not satisfy it.
     import json
 
-    man = tmp_path / "apt-impact.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact"]}}))
-    return str(man)
-
-
-def test_mandated_rejects_unrelated_passing_dir(capsys, tmp_path):
-    # H-C: an unrelated passing dir does NOT satisfy the mandated precondition.
     (tmp_path / "test_unrelated.py").write_text("def test_ok():\n    assert True\n")
+    man = tmp_path / "apt-impact.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": ["test_scw.py::test_contract"]}}))
     rc, out = _run(
-        capsys,
-        ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", _manifest(tmp_path)],
+        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 1 and out["verdict"] == "FAIL"
 
 
-def test_mandated_accepts_name_matching_passing_test(capsys, tmp_path):
-    # a passing test whose node id MATCHES the mandated substring unlocks it.
-    # (name-based binding; it does not assert the test did "real" impact work.)
-    (tmp_path / "test_scw_impact.py").write_text("def test_scw_impact():\n    assert True\n")
+def test_mandated_accepts_sha_pinned_test(capsys, tmp_path):
+    # the EXACT, sha-pinned mandated test present + passing unlocks it.
+    import hashlib
+    import json
+
+    tf = tmp_path / "test_scw_impact.py"
+    tf.write_text("def test_contract():\n    assert True\n")
+    sha = hashlib.sha256(tf.read_bytes()).hexdigest()
+    man = tmp_path / "apt-impact.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw_impact.py::test_contract", "sha256": sha}]}}))
     rc, out = _run(
-        capsys,
-        ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", _manifest(tmp_path)],
+        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 0 and out["verdict"] == "PASS"
+
+
+def test_mandated_rejects_content_forge(capsys, tmp_path):
+    # SAME node id, content differs from the pinned sha -> rejected (HIGH-2 close).
+    import hashlib
+    import json
+
+    canonical = b"def test_contract():\n    assert True\n"
+    (tmp_path / "test_scw_impact.py").write_text("def test_contract():\n    assert True  # forged\n")
+    man = tmp_path / "apt-impact.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw_impact.py::test_contract", "sha256": hashlib.sha256(canonical).hexdigest()}]}}))
+    rc, out = _run(
+        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
+    )
+    assert rc == 1 and out["verdict"] == "FAIL"

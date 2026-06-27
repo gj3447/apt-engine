@@ -1,19 +1,15 @@
-"""H-C fix harness (red-team follow-up) — bind --measure TARGET to MANDATED tests.
+"""H-C binding — EXACT node id + optional sha256 content pin (red-team HIGH-2 close).
 
-The red-team found the measured gate passed on ANY passing dir: pointing
-`--measure` at an unrelated trivially-passing test satisfied SCW->MetaReview even
-though the phase's mandated TDAD impact_tests never ran. These RED tests pin the
-fix: the precondition is met only when the tests the transition MANDATES (declared
-in a manifest, not chosen by the caller) are actually collected under the target
-AND pass. An unrelated passing dir is rejected.
-
-Collector/runner are injected here (fakes); production uses real pytest subprocess.
+Substring/name matching cannot stop a forge (a trivial test named to match
+passes). So `required` is now exact `file.py::testname` node ids, optionally
+sha256-pinned: with a sha, a same-named but different-content test is rejected.
+Collector/runner/hasher are injected here (fakes); production uses real pytest.
 """
 
 import json
 
-
 from apt_engine.precondition import (
+    ImpactReq,
     ImpactSpec,
     evaluate_measured_default,
     evaluate_measured_mandated,
@@ -31,89 +27,84 @@ def _runner(code):
     return lambda node_ids: code
 
 
-def test_manifest_loads_required_per_transition(tmp_path):
-    p = tmp_path / "apt-impact.json"
-    p.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact"]}}))
-    m = load_impact_manifest(str(p))
-    assert isinstance(m["SCW->MetaReview"], ImpactSpec)
-    assert m["SCW->MetaReview"].required == ("impact",)
+def _hasher(mapping):
+    return lambda path: mapping.get(path, "UNKNOWN")
 
 
-def test_unrelated_passing_dir_is_rejected():
-    # THE forge: a passing dir with NO mandated test must be UNMET.
-    ev = measure_mandated(
-        "x", ("impact",),
-        collector=_collector(["x/test_unrelated.py::test_ok"]), runner=_runner(0),
+# ---- manifest parsing ---------------------------------------------------- #
+
+def test_manifest_parses_exact_node_id_and_sha(tmp_path):
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw.py::test_contract", "sha256": "abc"},
+        "test_other.py::test_x",
+    ]}}))
+    spec = load_impact_manifest(str(p))["SCW->MetaReview"]
+    assert spec.required == (
+        ImpactReq("test_scw.py::test_contract", "abc"),
+        ImpactReq("test_other.py::test_x", None),
     )
-    assert ev.met is False
 
 
-def test_mandated_tests_present_and_passing_is_met():
+def test_manifest_drops_bare_substrings_and_empty(tmp_path):
+    # "impact" has no '::' -> rejected, so a bare name can never silently match.
+    p = tmp_path / "m.json"
+    p.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact", "", "f.py::t"]}}))
+    assert load_impact_manifest(str(p))["SCW->MetaReview"].required == (ImpactReq("f.py::t", None),)
+
+
+# ---- measure_mandated semantics ----------------------------------------- #
+
+def test_unrelated_dir_missing_required_is_rejected():
+    r = ImpactReq("test_scw.py::test_contract")
     ev = measure_mandated(
-        "x", ("impact",),
-        collector=_collector(["x/test_impact.py::test_scw_impact"]), runner=_runner(0),
+        "x", (r,), collector=_collector(["/abs/test_unrelated.py::test_ok"]), runner=_runner(0),
+    )
+    assert ev.met is False and ev.exit_code == 5
+
+
+def test_exact_name_match_no_sha_passes():
+    r = ImpactReq("test_scw.py::test_contract")
+    ev = measure_mandated(
+        "x", (r,), collector=_collector(["/abs/test_scw.py::test_contract"]), runner=_runner(0),
     )
     assert ev.met is True
 
 
-def test_mandated_tests_present_but_failing_is_unmet():
+def test_sha_match_passes():
+    r = ImpactReq("test_scw.py::test_contract", "goodsha")
     ev = measure_mandated(
-        "x", ("impact",),
-        collector=_collector(["x/test_impact.py::test_scw_impact"]), runner=_runner(1),
+        "x", (r,), collector=_collector(["/abs/test_scw.py::test_contract"]),
+        runner=_runner(0), hasher=_hasher({"/abs/test_scw.py": "goodsha"}),
     )
-    assert ev.met is False
+    assert ev.met is True
 
 
-def test_no_required_declared_is_unmet():
-    ev = measure_mandated("x", (), collector=_collector(["x/test_impact.py::test_x"]), runner=_runner(0))
-    assert ev.met is False
-
-
-def test_evaluate_mandated_unknown_transition_fails_closed():
-    # No manifest entry for the transition -> cannot measure -> FAIL (fail-closed).
-    r = evaluate_measured_mandated(
-        "SCW", "MetaReview", target="x", manifest={},
-        collector=_collector(["x/test_impact.py::test_scw_impact"]), runner=_runner(0),
-    )
-    assert r.verdict.value == "FAIL"
-
-
-def test_evaluate_mandated_forge_rejected_yields_fail():
-    m = {"SCW->MetaReview": ImpactSpec(("SCW", "MetaReview"), ("impact",))}
-    r = evaluate_measured_mandated(
-        "SCW", "MetaReview", target="x", manifest=m,
-        collector=_collector(["x/test_unrelated.py::test_ok"]), runner=_runner(0),
-    )
-    assert r.verdict.value == "FAIL"  # unrelated passing dir does NOT satisfy
-
-
-def test_evaluate_mandated_name_matching_pass_unlocks():
-    # A passing test whose node id MATCHES the mandated substring unlocks it.
-    # NB: binding is name-based — this proves the mechanism, not that the test
-    # did "real" impact work (red-team HIGH-2; exact node-id binding is follow-up).
-    m = {"SCW->MetaReview": ImpactSpec(("SCW", "MetaReview"), ("impact",))}
-    r = evaluate_measured_mandated(
-        "SCW", "MetaReview", target="x", manifest=m,
-        collector=_collector(["x/test_impact.py::test_scw_impact"]), runner=_runner(0),
-    )
-    assert r.verdict.value == "PASS"
-
-
-def test_empty_substring_required_is_rejected():
-    # red-team HIGH-1: required=[""] would match every node id -> must NOT pass.
+def test_sha_mismatch_is_content_forge_rejected():
+    # SAME node id, WRONG content -> rejected (the content-forge close, HIGH-2).
+    r = ImpactReq("test_scw.py::test_contract", "goodsha")
     ev = measure_mandated(
-        "x", ("",), collector=_collector(["x/test_anything.py::test_ok"]), runner=_runner(0),
+        "x", (r,), collector=_collector(["/abs/test_scw.py::test_contract"]),
+        runner=_runner(0), hasher=_hasher({"/abs/test_scw.py": "FORGED"}),
+    )
+    assert ev.met is False and ev.exit_code == 6
+
+
+def test_mandated_failing_run_is_unmet():
+    r = ImpactReq("test_scw.py::test_contract")
+    ev = measure_mandated(
+        "x", (r,), collector=_collector(["/abs/test_scw.py::test_contract"]), runner=_runner(1),
     )
     assert ev.met is False
 
 
-def test_manifest_drops_empty_and_whitespace_substrings(tmp_path):
-    p = tmp_path / "m.json"
-    p.write_text(json.dumps({"SCW->MetaReview": {"required": ["", "  ", "impact"]}}))
-    assert load_impact_manifest(str(p))["SCW->MetaReview"].required == ("impact",)
+def test_all_required_must_be_present():
+    reqs = (ImpactReq("a.py::t"), ImpactReq("b.py::t"))
+    ev = measure_mandated("x", reqs, collector=_collector(["/abs/a.py::t"]), runner=_runner(0))
+    assert ev.met is False and ev.exit_code == 5  # b.py::t missing
 
 
-def test_runner_receives_exactly_the_matched_subset():
+def test_runner_receives_exactly_the_matched_ids():
     # red-team MED-4: only the MANDATED node ids run, not all collected.
     seen = {}
 
@@ -121,18 +112,54 @@ def test_runner_receives_exactly_the_matched_subset():
         seen["ids"] = list(ids)
         return 0
 
+    reqs = (ImpactReq("a.py::t"), ImpactReq("b.py::t"))
     measure_mandated(
-        "x", ("impact",),
-        collector=_collector(
-            ["x/test_impact_a.py::t", "x/test_other.py::t", "x/test_impact_b.py::t"]
-        ),
+        "x", reqs,
+        collector=_collector(["/abs/a.py::t", "/abs/other.py::t", "/abs/b.py::t"]),
         runner=recording_runner,
     )
-    assert seen["ids"] == ["x/test_impact_a.py::t", "x/test_impact_b.py::t"]
+    assert sorted(seen["ids"]) == ["/abs/a.py::t", "/abs/b.py::t"]
 
+
+def test_no_required_declared_is_unmet():
+    ev = measure_mandated("x", (), collector=_collector(["/abs/a.py::t"]), runner=_runner(0))
+    assert ev.met is False and ev.exit_code == 4
+
+
+# ---- evaluate_measured_mandated ----------------------------------------- #
+
+def test_evaluate_mandated_unknown_transition_fails_closed():
+    r = evaluate_measured_mandated(
+        "SCW", "MetaReview", target="x", manifest={},
+        collector=_collector(["/abs/a.py::t"]), runner=_runner(0),
+    )
+    assert r.verdict.value == "FAIL"
+
+
+def test_evaluate_mandated_genuine_pass_unlocks():
+    m = {"SCW->MetaReview": ImpactSpec(("SCW", "MetaReview"), (ImpactReq("test_scw.py::test_contract"),))}
+    r = evaluate_measured_mandated(
+        "SCW", "MetaReview", target="x", manifest=m,
+        collector=_collector(["/abs/test_scw.py::test_contract"]), runner=_runner(0),
+    )
+    assert r.verdict.value == "PASS"
+
+
+def test_evaluate_mandated_content_forge_fails():
+    m = {"SCW->MetaReview": ImpactSpec(
+        ("SCW", "MetaReview"), (ImpactReq("test_scw.py::test_contract", "goodsha"),))}
+    r = evaluate_measured_mandated(
+        "SCW", "MetaReview", target="x", manifest=m,
+        collector=_collector(["/abs/test_scw.py::test_contract"]), runner=_runner(0),
+        hasher=_hasher({"/abs/test_scw.py": "FORGED"}),
+    )
+    assert r.verdict.value == "FAIL"
+
+
+# ---- production _default fail-closed ------------------------------------ #
 
 def test_default_variant_fails_closed_for_non_measurable_transition():
-    # red-team MED-5: is_measurable is now enforced, not dead code.
+    # red-team MED-5: is_measurable is enforced, not dead code.
     r = evaluate_measured_default("SA", "SP", target="x")
     assert r.verdict.value == "FAIL"
     assert "not locally measurable" in r.reason
