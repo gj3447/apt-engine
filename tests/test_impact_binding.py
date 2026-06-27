@@ -22,7 +22,7 @@ from apt_engine.precondition import (
 
 
 def _collector(ids):
-    return lambda target: list(ids)
+    return lambda target, rel_files=None: list(ids)
 
 
 def _runner(code):
@@ -102,7 +102,7 @@ def test_sha_match_passes():
 
 
 def test_sha_mismatch_is_content_forge_rejected():
-    # SAME node id, WRONG content -> rejected (the content-forge close, HIGH-2).
+    # SAME node id, WRONG content -> rejected (content-DRIFT vs a TRUSTED manifest).
     r = ImpactReq("test_scw.py::test_contract", "goodsha")
     ev = measure_mandated(
         "x",

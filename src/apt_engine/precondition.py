@@ -219,13 +219,6 @@ def _txn_key(from_phase: str, to_phase: str) -> str:
     return f"{from_phase}->{to_phase}"
 
 
-def _norm_node_id(node_id: str) -> str:
-    """Reduce a pytest node id to a manifest-comparable suffix."""
-    file_part, sep, rest = node_id.partition("::")
-    base = Path(file_part).name
-    return f"{base}::{rest}" if sep else base
-
-
 def _node_id_matches(collected: str, required: str) -> bool:
     """Whether a collected (possibly absolute) node id satisfies a required one.
 

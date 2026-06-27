@@ -235,3 +235,45 @@ def test_warning_phantom_does_not_flip_gate(tmp_path):
         )
     )
     assert _mandated_default(tmp_path, man).verdict.value == "PASS"
+
+
+def _sha_manifest(tmp_path, node_id, test_file):
+    import hashlib
+    import json
+
+    man = tmp_path / "m.json"
+    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
+        {"node_id": node_id, "sha256": hashlib.sha256(test_file.read_bytes()).hexdigest()}]}}))
+    return man
+
+
+def test_env_pytest_addopts_injection_is_rejected(tmp_path, monkeypatch):
+    # red-team-5 A1: PYTEST_ADDOPTS env can't neuter the runner (env is scrubbed);
+    # `-o addopts=` alone does NOT override the env var.
+    tf = tmp_path / "test_scw.py"
+    tf.write_text("def test_contract():\n    assert False\n")
+    man = _sha_manifest(tmp_path, "test_scw.py::test_contract", tf)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
+
+
+def test_unrelated_broken_file_does_not_poison(tmp_path):
+    # red-team-5 B1: a broken/WIP file elsewhere in the tree must not fail the gate
+    # (collection is scoped to the manifest-declared files only).
+    tf = tmp_path / "test_scw.py"
+    tf.write_text("def test_contract():\n    assert True\n")
+    (tmp_path / "test_wip.py").write_text("import a_module_that_does_not_exist\n")
+    man = _sha_manifest(tmp_path, "test_scw.py::test_contract", tf)
+    assert _mandated_default(tmp_path, man).verdict.value == "PASS"
+
+
+def test_path_qualified_sibling_basenames_pass(tmp_path):
+    # red-team-5 B2: legit same-basename in sibling dirs, path-qualified -> PASS
+    # (no more basename collapse that falsely rejected legit monorepos).
+    (tmp_path / "unit").mkdir()
+    u = tmp_path / "unit" / "test_x.py"
+    u.write_text("def test_foo():\n    assert True\n")
+    (tmp_path / "integration").mkdir()
+    (tmp_path / "integration" / "test_x.py").write_text("def test_foo():\n    assert True\n")
+    man = _sha_manifest(tmp_path, "unit/test_x.py::test_foo", u)
+    assert _mandated_default(tmp_path, man).verdict.value == "PASS"
