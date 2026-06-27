@@ -65,3 +65,13 @@ requirements:
       source: ooptdd_target/adapter.py
       symbol: emit_cli_measured_phase
       must_emit: cli_measured_block
+
+  - id: REQ-MANDATED-FORGE-REJECTED
+    description: the mandated gate rejects an unrelated passing dir (H-C; target bound to mandated tests)
+    gate:
+      - {event: mandated_forge_rejected, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_forge_rejected_phase
+      must_emit: mandated_forge_rejected

@@ -150,6 +150,31 @@ def emit_cli_measured_phase(backend, cid: str) -> int:
     return rc
 
 
+def emit_forge_rejected_phase(backend, cid: str) -> str:
+    """The MANDATED gate REJECTS an unrelated passing dir (red-team H-C forge).
+
+    Builds a manifest requiring 'impact' tests, points the REAL production
+    mandated gate at a dir whose only test is unrelated + passing, and ships the
+    forge-rejected event only when the verdict is FAIL (the forge is genuinely
+    refused). Returns the observed verdict.
+    """
+    from apt_engine.precondition import evaluate_measured_mandated_default
+
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "test_unrelated.py").write_text("def test_ok():\n    assert True\n")
+        manifest = Path(d, "apt-impact.json")
+        manifest.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact"]}}))
+        result = evaluate_measured_mandated_default(
+            "SCW", "MetaReview", target=d, manifest_path=str(manifest))
+    if result.verdict.value == "FAIL":
+        backend.ship([
+            _ev(cid, "mandated_forge_rejected", verdict=result.verdict.value,
+                transition="SCW->MetaReview", reason="unrelated-dir-not-mandated",
+                kg_anchor=_KG_ANCHOR)
+        ])
+    return result.verdict.value
+
+
 def run_apt_fix_pipeline(backend, cid: str) -> dict:
     """Loop entry point: exercise the fixes under ``cid``, shipping earned events."""
     return {
@@ -157,4 +182,5 @@ def run_apt_fix_pipeline(backend, cid: str) -> dict:
         "measured_pass_verdict": emit_measured_pass_phase(backend, cid),
         "measured_block_verdict": emit_measured_block_phase(backend, cid),
         "cli_measured_exit": emit_cli_measured_phase(backend, cid),
+        "forge_rejected_verdict": emit_forge_rejected_phase(backend, cid),
     }

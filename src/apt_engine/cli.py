@@ -17,7 +17,7 @@ from typing import Sequence
 from .detect import detect_phase
 from .gate import Verdict, evaluate_transition
 from .phases import PHASES
-from .precondition import evaluate_measured_default
+from .precondition import evaluate_measured_default, evaluate_measured_mandated_default
 
 
 def _cmd_detect(args: argparse.Namespace) -> int:
@@ -43,9 +43,22 @@ def _cmd_chain(_args: argparse.Namespace) -> int:
 
 
 def _cmd_gate(args: argparse.Namespace) -> int:
-    if args.measure is not None:
-        # Measured path: establish the precondition from a REAL pytest run on
-        # `target` (no caller bool, no injectable runner) — frontier #1 wired.
+    if args.measure is not None and args.impact_manifest is not None:
+        # Mandated measured path (H-C): the precondition is the transition's
+        # MANDATED impact_tests (from the manifest) actually running green under
+        # `target` — an unrelated passing dir FAILs.
+        result = evaluate_measured_mandated_default(
+            args.from_phase,
+            args.to_phase,
+            target=args.measure,
+            manifest_path=args.impact_manifest,
+            conditional=args.conditional,
+            skipped=args.skip,
+        )
+    elif args.measure is not None:
+        # Bare measured path: a REAL pytest run on `target` (no caller bool, no
+        # injectable runner). WEAK — runs whatever is under target; prefer
+        # --impact-manifest to bind to the phase's mandated tests.
         result = evaluate_measured_default(
             args.from_phase,
             args.to_phase,
@@ -102,6 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TARGET",
         default=None,
         help="measure the precondition by running pytest on TARGET (overrides --precondition-met)",
+    )
+    g.add_argument(
+        "--impact-manifest",
+        metavar="PATH",
+        default=None,
+        help="with --measure: bind to the transition's MANDATED impact_tests "
+        "declared in PATH (an unrelated passing dir then fails)",
     )
     g.add_argument("--conditional", action="store_true")
     g.add_argument("--skip", action="store_true")
