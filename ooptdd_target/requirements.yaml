@@ -1,0 +1,47 @@
+# apt-engine fix harness — ooptdd-loop spec (the RED artifact, fixes driven to GREEN).
+#
+# Three trace gates, each Longinus-bound to a REAL emitting symbol in ooptdd_target/adapter.py.
+# Each event is shipped ONLY by genuinely running the fixed apt_engine code (fail-closed
+# frontend + measured precondition resolver). A gate goes DONE iff it is GREEN *and* its
+# bound symbol's body literally contains the must_emit event string (AST-checked).
+#
+# Run:  cd apt-engine && \
+#       <WORKSPACE>/PROJECT/PI/ooptdd-loop/.venv/bin/ooptdd-loop run ooptdd_target/requirements.yaml --json
+name: apt-engine-fix-harness
+
+target:
+  mode: in_process
+  callable: ooptdd_target.adapter:run_apt_fix_pipeline   # called as run_apt_fix_pipeline(backend, cid)
+  backend: memory                                 # zero-infra in-process store
+  root: .                                         # repo root: Longinus source root + import base
+
+requirements:
+  - id: REQ-GATE-FAIL-CLOSED
+    description: the MCP gate frontend fails closed when the precondition is unstated
+    gate:
+      - {event: gate_failed_closed, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_failclosed_phase
+      must_emit: gate_failed_closed
+
+  - id: REQ-PRECONDITION-MEASURED-PASS
+    description: a real passing pytest run unlocks SCW->MetaReview (measured PASS)
+    gate:
+      - {event: precondition_measured_pass, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_measured_pass_phase
+      must_emit: precondition_measured_pass
+
+  - id: REQ-PRECONDITION-MEASURED-BLOCK
+    description: a real failing pytest run blocks SCW->MetaReview (measured FAIL)
+    gate:
+      - {event: precondition_measured_block, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_measured_block_phase
+      must_emit: precondition_measured_block

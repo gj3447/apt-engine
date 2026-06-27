@@ -35,8 +35,11 @@ def _detect(repo_path: str) -> dict[str, Any]:
     return detect_phase(repo_path)
 
 
-def _gate(from_phase: str, to_phase: str, precondition_met: bool = True,
+def _gate(from_phase: str, to_phase: str, precondition_met: bool = False,
           conditional: bool = False, skipped: bool = False) -> dict[str, Any]:
+    # Fail-closed: an UNSTATED precondition is treated as unmet, never a silent
+    # PASS. Anti-fake-green substrate -> the precondition must be proven, not
+    # assumed. (deep-think 2026-06-27 frontier #3; KG: finding-ooptdd-apt-engine-fix-harness-20260627)
     r = evaluate_transition(from_phase, to_phase, precondition_met=precondition_met,
                             conditional=conditional, skipped=skipped)
     return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
