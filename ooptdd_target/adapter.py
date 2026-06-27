@@ -151,26 +151,47 @@ def emit_cli_measured_phase(backend, cid: str) -> int:
 
 
 def emit_forge_rejected_phase(backend, cid: str) -> str:
-    """The MANDATED gate REJECTS an unrelated passing dir (red-team H-C forge).
+    """The MANDATED gate REJECTS an unrelated passing dir as a GENUINE forge.
 
-    Builds a manifest requiring 'impact' tests, points the REAL production
-    mandated gate at a dir whose only test is unrelated + passing, and ships the
-    forge-rejected event only when the verdict is FAIL (the forge is genuinely
-    refused). Returns the observed verdict.
+    Uses the real production collector+runner and ships only when the evidence is
+    a true forge-rejection — met False AND exit_code 5 (no mandated test
+    collected), NOT merely any FAIL. So a deny-all regression (which would also
+    FAIL) cannot masquerade as a rejection here (red-team MED-3). Returns a
+    met/exit summary.
+    """
+    from apt_engine.precondition import measure_mandated, pytest_collector, pytest_id_runner
+
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "test_unrelated.py").write_text("def test_ok():\n    assert True\n")
+        evidence = measure_mandated(
+            d, ("impact",), collector=pytest_collector, runner=pytest_id_runner)
+    if evidence.met is False and evidence.exit_code == 5:
+        backend.ship([
+            _ev(cid, "mandated_forge_rejected", exit_code=evidence.exit_code,
+                source=evidence.source, transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
+        ])
+    return f"met={evidence.met} exit={evidence.exit_code}"
+
+
+def emit_mandated_accepts_phase(backend, cid: str) -> str:
+    """The MANDATED gate ACCEPTS a dir whose mandated impact test passes.
+
+    Positive-path sibling of the forge gate (red-team MED-3): together they pin
+    genuine-pass -> PASS AND forge -> FAIL, so neither an allow-all nor a deny-all
+    regression can keep both gates GREEN. Returns the observed verdict.
     """
     from apt_engine.precondition import evaluate_measured_mandated_default
 
     with tempfile.TemporaryDirectory() as d:
-        Path(d, "test_unrelated.py").write_text("def test_ok():\n    assert True\n")
+        Path(d, "test_scw_impact.py").write_text("def test_scw_impact():\n    assert True\n")
         manifest = Path(d, "apt-impact.json")
         manifest.write_text(json.dumps({"SCW->MetaReview": {"required": ["impact"]}}))
         result = evaluate_measured_mandated_default(
             "SCW", "MetaReview", target=d, manifest_path=str(manifest))
-    if result.verdict.value == "FAIL":
+    if result.verdict.value == "PASS":
         backend.ship([
-            _ev(cid, "mandated_forge_rejected", verdict=result.verdict.value,
-                transition="SCW->MetaReview", reason="unrelated-dir-not-mandated",
-                kg_anchor=_KG_ANCHOR)
+            _ev(cid, "mandated_accepts", verdict=result.verdict.value,
+                transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
         ])
     return result.verdict.value
 
@@ -182,5 +203,6 @@ def run_apt_fix_pipeline(backend, cid: str) -> dict:
         "measured_pass_verdict": emit_measured_pass_phase(backend, cid),
         "measured_block_verdict": emit_measured_block_phase(backend, cid),
         "cli_measured_exit": emit_cli_measured_phase(backend, cid),
-        "forge_rejected_verdict": emit_forge_rejected_phase(backend, cid),
+        "forge_rejected_summary": emit_forge_rejected_phase(backend, cid),
+        "mandated_accepts_verdict": emit_mandated_accepts_phase(backend, cid),
     }
