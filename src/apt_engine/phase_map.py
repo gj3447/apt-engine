@@ -48,7 +48,7 @@ V9_PHASES: tuple[str, ...] = (
 # v9 phase -> the v27 phase name(s) it reconciles to.
 V9_TO_V27: dict[str, tuple[str, ...]] = {
     "v9_PH1_SA": ("SA",),
-    "v9_PH2_Root": ("SA",),            # RootIntentSpan = SA's HAS_ROOT postcondition
+    "v9_PH2_Root": ("SA",),  # RootIntentSpan = SA's HAS_ROOT postcondition
     "v9_PH3_SP": ("SP",),
     "v9_PH4_ST": ("ST",),
     "v9_PH5_SCW": ("SCW",),

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -64,6 +65,7 @@ MEASURABLE_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({("SCW", "MetaRev
 def is_measurable(from_phase: str, to_phase: str) -> bool:
     """Whether this transition's precondition can be established by measurement here."""
     return (from_phase, to_phase) in MEASURABLE_TRANSITIONS
+
 
 #: target -> process exit code (0 == the phase's mandated tests passed).
 TestRunner = Callable[[str], int]
@@ -116,8 +118,9 @@ def pytest_runner(target: str) -> int:
     covered with injected fake runners.
     """
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", target],
+        [sys.executable, "-m", "pytest", "-q", *_PYTEST_ISOLATION, target],
         capture_output=True,
+        env=_isolated_env(),
     )
     return completed.returncode
 
@@ -144,7 +147,9 @@ def evaluate_measured_default(
     """
     if not is_measurable(from_phase, to_phase):
         return GateResult(
-            from_phase, to_phase, Verdict.FAIL,
+            from_phase,
+            to_phase,
+            Verdict.FAIL,
             f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
         )
     return evaluate_measured(
@@ -176,7 +181,7 @@ def evaluate_measured_default(
 #  truth-establishment, per adr-apt-dgx-runtime-delegation).                     #
 # --------------------------------------------------------------------------- #
 
-NodeCollector = Callable[[str], list[str]]  #: target -> collected pytest node ids
+NodeCollector = Callable[..., list[str]]  #: target[, rel_files] -> collected pytest node ids
 IdRunner = Callable[[list[str]], int]  #: node ids -> exit code
 FileHasher = Callable[[str], str]  #: file path -> sha256 hex
 
@@ -214,11 +219,16 @@ def _txn_key(from_phase: str, to_phase: str) -> str:
     return f"{from_phase}->{to_phase}"
 
 
-def _norm_node_id(node_id: str) -> str:
-    """Reduce a (possibly absolute) pytest node id to `basename.py::testname`."""
-    file_part, sep, rest = node_id.partition("::")
-    base = Path(file_part).name
-    return f"{base}::{rest}" if sep else base
+def _node_id_matches(collected: str, required: str) -> bool:
+    """Whether a collected (possibly absolute) node id satisfies a required one.
+
+    Matches by PATH SUFFIX at a path boundary, so a path-qualified required id
+    `tests/unit/test_x.py::t` matches `/base/tests/unit/test_x.py::t` but NOT
+    `/base/tests/integration/test_x.py::t` (red-team-5 B2 — directories are not
+    collapsed to basenames). A basename-only required id `test_x.py::t` matches
+    BOTH siblings, which `measure_mandated` then treats as ambiguous (fail-closed).
+    """
+    return collected == required or collected.endswith("/" + required)
 
 
 def _file_of_node_id(node_id: str) -> str:
@@ -241,8 +251,10 @@ def _parse_req(entry: object) -> "ImpactReq | None":
     # An exact node id must contain '::' — a bare substring (e.g. "impact") is
     # rejected so it can never silently match by name (red-team HIGH-1/HIGH-2).
     if isinstance(node_id, str) and node_id.strip() and "::" in node_id:
+        # Keep the node id AS DECLARED (path-qualified) — do NOT collapse to
+        # basename, so `tests/unit/test_x.py::t` stays distinct from a sibling.
         return ImpactReq(
-            node_id=_norm_node_id(node_id.strip()),
+            node_id=node_id.strip(),
             sha256=sha if isinstance(sha, str) and sha.strip() else None,
         )
     return None
@@ -287,25 +299,27 @@ def measure_mandated(
     required = tuple(r for r in required if r.node_id and "::" in r.node_id)
     if not required:
         return PreconditionEvidence(met=False, exit_code=4, source="impact:no-mandated-declared")
-    by_norm: dict[str, str] = {}
-    ambiguous: set[str] = set()
-    for nid in collector(target):
-        norm = _norm_node_id(nid)
-        if norm in by_norm and by_norm[norm] != nid:
-            ambiguous.add(norm)  # same basename::func from >1 file -> can't tell which is mandated
-        by_norm.setdefault(norm, nid)
+    # Scope collection to ONLY the manifest-declared files (red-team-5 B1): an
+    # unrelated broken/WIP file elsewhere in the tree must not poison the gate.
+    rel_files = sorted({_file_of_node_id(r.node_id) for r in required})
+    try:
+        collected = collector(target, rel_files)
+    except TypeError:
+        collected = collector(target)
     matched: list[str] = []
     for req in required:
-        if req.node_id in ambiguous:
-            # Duplicate basename collision -> fail closed rather than guess (LOW).
+        hits = [c for c in collected if _node_id_matches(c, req.node_id)]
+        if len(hits) > 1:
+            # A basename-only id matched >1 file -> fail closed rather than guess
+            # (path-qualify the manifest entry to disambiguate). red-team-5 B2.
             return PreconditionEvidence(
                 met=False, exit_code=7, source=f"impact:{target}:ambiguous:{req.node_id}"
             )
-        abs_id = by_norm.get(req.node_id)
-        if abs_id is None:
+        if not hits:
             return PreconditionEvidence(
                 met=False, exit_code=5, source=f"impact:{target}:missing:{req.node_id}"
             )
+        abs_id = hits[0]
         if req.sha256 is not None:
             try:
                 actual = hasher(_file_of_node_id(abs_id))
@@ -346,43 +360,82 @@ def evaluate_measured_mandated(
     required = spec.required if spec else ()
     evidence = measure_mandated(target, required, collector=collector, runner=runner, hasher=hasher)
     return evaluate_transition(
-        from_phase, to_phase, precondition_met=evidence.met,
-        conditional=conditional, skipped=skipped,
+        from_phase,
+        to_phase,
+        precondition_met=evidence.met,
+        conditional=conditional,
+        skipped=skipped,
     )
 
 
 # Isolate the TARGET's own pytest config — the gated party owns the working tree,
-# so its config is hostile-or-accidental input (red-team-4 BLOCKER/HIGH):
-#   -o addopts=          : neutralise a target `addopts=--collect-only` that would
-#                          let a RED test "pass" by never running.
+# so its config is hostile-or-accidental input (red-team-4/5):
+#   -o addopts=          : neutralise a target ini `addopts=--collect-only` that
+#                          would let a RED test "pass" by never running.
 #   --import-mode=importlib : same-basename files in sibling dirs both collect
 #                          (no prepend import-mismatch that silently drops one).
 #   -p no:warnings       : warning summary lines can't become phantom node ids.
 #   -p no:cacheprovider  : no .pytest_cache writes under the target.
-# This is defence in depth, NOT a full security boundary — see the TRUST BOUNDARY
-# note above: a party controlling the EXECUTION ENVIRONMENT can still subvert a
-# working-tree gate; the sound guarantee needs a trusted runner (CI), not this.
+# The subprocess env is also scrubbed (`_isolated_env`): `-o addopts=` does NOT
+# override the PYTEST_ADDOPTS / PYTEST_PLUGINS ENV vars, so they are stripped.
+#
+# This is defence in depth, NOT a security boundary. Channels it does NOT close
+# (the gated party controls them): a target `conftest.py` runs ARBITRARY hook code
+# — e.g. a `pytest_runtest_makereport` wrapper can rewrite a RED outcome to passed
+# — and sibling helper modules and the test bodies all execute in this process.
+# sha pins the named test FILE's bytes only, not its conftest. So a PASS does NOT
+# imply a genuine pass unless the EXECUTION ENVIRONMENT is ALSO trusted (a CI runner
+# the gated party does not control). See the TRUST BOUNDARY note above; the sound
+# guarantee needs trusted CI + a non-caller (KG) manifest.
 _PYTEST_ISOLATION = (
-    "-o", "addopts=",
+    "-o",
+    "addopts=",
     "--import-mode=importlib",
-    "-p", "no:warnings",
-    "-p", "no:cacheprovider",
+    "-p",
+    "no:warnings",
+    "-p",
+    "no:cacheprovider",
 )
 
 
-def pytest_collector(target: str) -> list[str]:
-    """Production collector: collect under `target` -> ABSOLUTE node ids.
+def _isolated_env() -> dict[str, str]:
+    """Subprocess env with pytest's argv-injecting vars stripped (red-team-5 A1).
 
+    `-o addopts=` overrides the ini addopts but NOT the PYTEST_ADDOPTS / PYTEST_PLUGINS
+    ENV vars (pytest merges those by a different path), so a hostile/ambient value
+    would otherwise reach the child and (e.g.) re-inject --collect-only.
+    """
+    return {k: v for k, v in os.environ.items() if k not in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS")}
+
+
+def pytest_collector(target: str, rel_files: list[str] | None = None) -> list[str]:
+    """Production collector: collect ONLY `rel_files` under `target` -> ABS node ids.
+
+    Collecting just the manifest-declared files (not the whole tree) means an
+    unrelated broken/WIP file elsewhere cannot poison the gate (red-team-5 B1).
     pytest's rootdir is the nearest ancestor with a config (NOT necessarily
-    `target`), so we force `--rootdir=base`, `cwd=base`, arg `.`. The target's own
-    config is isolated (`_PYTEST_ISOLATION`). A collection PROBLEM (returncode not
-    in {0, 5}) fails closed (no ids -> 'missing'); each id is kept only if its file
-    part is a real `.py` on disk (drops phantom ids from stray `::` lines).
+    `target`), so we force `--rootdir=base`, `cwd=base`. The target's own config and
+    env are isolated. A collection PROBLEM (returncode not in {0, 5}) fails closed;
+    each id is kept only if its file part is a real `.py` on disk (drops phantoms).
     """
     base = Path(target).resolve()
+    args = [str(f) for f in rel_files] if rel_files else ["."]
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "--co", "-q", *_PYTEST_ISOLATION, "--rootdir", str(base), "."],
-        cwd=str(base), capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--co",
+            "-q",
+            *_PYTEST_ISOLATION,
+            "--rootdir",
+            str(base),
+            *args,
+        ],
+        cwd=str(base),
+        capture_output=True,
+        text=True,
+        env=_isolated_env(),
     )
     if completed.returncode not in (0, 5):
         return []  # collection error (import mismatch, etc.) -> fail closed
@@ -412,7 +465,9 @@ def pytest_id_runner(node_ids: list[str]) -> int:
         return 5  # pytest's "no tests collected" code -> treated as unmet
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--no-header", *_PYTEST_ISOLATION, *node_ids],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
+        env=_isolated_env(),
     )
     m = re.search(r"(\d+) passed", completed.stdout)
     passed = int(m.group(1)) if m else 0
@@ -439,19 +494,29 @@ def evaluate_measured_mandated_default(
     """
     if not is_measurable(from_phase, to_phase):
         return GateResult(
-            from_phase, to_phase, Verdict.FAIL,
+            from_phase,
+            to_phase,
+            Verdict.FAIL,
             f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
         )
     try:
         manifest = load_impact_manifest(manifest_path)
         return evaluate_measured_mandated(
-            from_phase, to_phase, target=target, manifest=manifest,
-            collector=pytest_collector, runner=pytest_id_runner,
-            conditional=conditional, skipped=skipped,
+            from_phase,
+            to_phase,
+            target=target,
+            manifest=manifest,
+            collector=pytest_collector,
+            runner=pytest_id_runner,
+            conditional=conditional,
+            skipped=skipped,
         )
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         # Fail closed instead of leaking a traceback — unreadable/malformed
         # manifest, or a hash/collect I/O error (red-team LOW-7).
         return GateResult(
-            from_phase, to_phase, Verdict.FAIL, f"impact gate unevaluable: {exc}",
+            from_phase,
+            to_phase,
+            Verdict.FAIL,
+            f"impact gate unevaluable: {exc}",
         )

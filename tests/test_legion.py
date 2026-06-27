@@ -21,7 +21,13 @@ from apt_engine.legion import (
 
 def test_seven_commanders_in_canonical_order():
     assert ROSTER == (
-        "prometheus", "longinus", "eureka", "occam", "naesengmoon", "hades", "jaebaeman",
+        "prometheus",
+        "longinus",
+        "eureka",
+        "occam",
+        "naesengmoon",
+        "hades",
+        "jaebaeman",
     )
     assert len(COMMANDERS) == 7
 

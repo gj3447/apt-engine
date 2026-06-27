@@ -69,6 +69,7 @@ _README = Path(__file__).resolve().parents[1] / "README.md"
 
 # --- A1/A2: frontend fail-closed -------------------------------------- #
 
+
 def test_mcp_gate_does_not_silently_pass_on_unstated_precondition():
     """An adjacent transition with the precondition UNSTATED must not PASS."""
     apt_gate = build_tools()["apt_gate"]
@@ -96,6 +97,7 @@ def test_cli_gate_does_not_silently_pass_on_unstated_precondition(capsys):
 
 
 # --- A3/A4/A5: 🥇 measured precondition (new stdlib module) ------------ #
+
 
 def test_precondition_module_exists():
     """The measured-precondition resolver module must exist."""
@@ -129,6 +131,7 @@ def test_measured_precondition_pytest_fail_blocks_and_truth_is_unforgeable():
 
 # --- A6: Cleanup provenance honesty ----------------------------------- #
 
+
 def test_cleanup_rows_are_marked_engine_local_not_canonical():
     """Cleanup's invented contract rows must self-declare non-ADR provenance."""
     cleanup = phase_by_name("Cleanup")
@@ -143,6 +146,7 @@ def test_cleanup_rows_are_marked_engine_local_not_canonical():
 
 # --- A7: truth in advertising ----------------------------------------- #
 
+
 def test_readme_carries_no_stale_numeric_test_count():
     # Not just the old "21 passing": any hard-coded "<n> passing" goes stale.
     text = _README.read_text(errors="replace")
@@ -153,6 +157,7 @@ def test_readme_carries_no_stale_numeric_test_count():
 # ====================================================================== #
 #  SECTION B — ratchet pins (GREEN now; lock unguarded invariants)       #
 # ====================================================================== #
+
 
 def test_detect_patterns_cover_exactly_the_chain():
     """detect.py's de-drift guarantee is order-only; pin MEMBERSHIP too."""
