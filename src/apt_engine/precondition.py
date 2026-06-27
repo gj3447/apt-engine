@@ -162,10 +162,17 @@ def evaluate_measured_default(
 #  unrelated passing dir satisfies it. Below, the precondition is met only     #
 #  when the tests the transition MANDATES (declared in a manifest as EXACT      #
 #  node ids, optionally content-pinned by sha256) are collected under the       #
-#  target AND pass. With sha256 the bind is CONTENT-bound — a same-named but     #
-#  different test is rejected (closes the name-forge); without it, name-only.    #
-#  The manifest is caller-supplied (`--impact-manifest`), only as trusted as     #
-#  that path. Bare substrings (no `::`) and empty/sha-less names are weaker.     #
+#  target AND pass. With sha256 the bind rejects a same-named but               #
+#  different-content test (content DRIFT); without it, name-only.               #
+#                                                                               #
+#  TRUST BOUNDARY (do not over-read): the manifest — node ids AND shas — is      #
+#  caller-supplied (`--impact-manifest`). A forger who controls the manifest     #
+#  just pins the sha of their OWN forged test and passes, so sha does NOT close  #
+#  the forge against an adversary who writes the manifest. It only defends a     #
+#  TRUSTED manifest (node ids + shas authored by a non-caller trust root, e.g.   #
+#  KG/CI/signed) against on-disk test-content drift. Anchoring the manifest in   #
+#  that trust root is out of scope here (delegated, like the rest of APT's       #
+#  truth-establishment, per adr-apt-dgx-runtime-delegation).                     #
 # --------------------------------------------------------------------------- #
 
 NodeCollector = Callable[[str], list[str]]  #: target -> collected pytest node ids
@@ -178,9 +185,11 @@ class ImpactReq:
     """One mandated impact test: an exact `file.py::testname` node id plus an
     optional sha256 of the test FILE.
 
-    With `sha256` set, a same-named but different-content test is REJECTED (the
-    content-forge close); without it the bind is name-only — a same-named trivial
-    test still satisfies it, so sha256 is the honest way to close the forge.
+    With `sha256` set, a same-named but different-content test is REJECTED —
+    BUT only relative to a TRUSTED manifest: since the manifest (incl. the sha)
+    is caller-supplied, a forger who writes it can pin their own forged test's
+    sha and pass. sha closes test-content DRIFT, not a manifest-controlling
+    adversary. Without sha, the bind is name-only. See the TRUST BOUNDARY note above.
     """
 
     node_id: str
@@ -248,7 +257,11 @@ def load_impact_manifest(path: str) -> dict[str, ImpactSpec]:
     """
     data = json.loads(Path(path).read_text())
     out: dict[str, ImpactSpec] = {}
+    if not isinstance(data, dict):
+        return out  # malformed (e.g. a JSON array) -> no mandated transitions
     for key, spec in data.items():
+        if not isinstance(spec, dict):
+            continue  # skip malformed transition entries instead of crashing
         frm, _, to = key.partition("->")
         reqs = tuple(r for r in (_parse_req(e) for e in spec.get("required", ())) if r)
         out[key] = ImpactSpec(transition=(frm, to), required=reqs)
@@ -274,19 +287,35 @@ def measure_mandated(
     if not required:
         return PreconditionEvidence(met=False, exit_code=4, source="impact:no-mandated-declared")
     by_norm: dict[str, str] = {}
+    ambiguous: set[str] = set()
     for nid in collector(target):
-        by_norm.setdefault(_norm_node_id(nid), nid)
+        norm = _norm_node_id(nid)
+        if norm in by_norm and by_norm[norm] != nid:
+            ambiguous.add(norm)  # same basename::func from >1 file -> can't tell which is mandated
+        by_norm.setdefault(norm, nid)
     matched: list[str] = []
     for req in required:
+        if req.node_id in ambiguous:
+            # Duplicate basename collision -> fail closed rather than guess (LOW).
+            return PreconditionEvidence(
+                met=False, exit_code=7, source=f"impact:{target}:ambiguous:{req.node_id}"
+            )
         abs_id = by_norm.get(req.node_id)
         if abs_id is None:
             return PreconditionEvidence(
                 met=False, exit_code=5, source=f"impact:{target}:missing:{req.node_id}"
             )
-        if req.sha256 is not None and hasher(_file_of_node_id(abs_id)) != req.sha256:
-            return PreconditionEvidence(
-                met=False, exit_code=6, source=f"impact:{target}:sha-mismatch:{req.node_id}"
-            )
+        if req.sha256 is not None:
+            try:
+                actual = hasher(_file_of_node_id(abs_id))
+            except OSError:
+                return PreconditionEvidence(
+                    met=False, exit_code=6, source=f"impact:{target}:unhashable:{req.node_id}"
+                )
+            if actual != req.sha256:
+                return PreconditionEvidence(
+                    met=False, exit_code=6, source=f"impact:{target}:sha-mismatch:{req.node_id}"
+                )
         matched.append(abs_id)
     code = runner(matched)
     return PreconditionEvidence(
@@ -322,28 +351,32 @@ def evaluate_measured_mandated(
 
 
 def pytest_collector(target: str) -> list[str]:
-    """Production collector: `pytest --co -q target` -> ABSOLUTE node ids.
+    """Production collector: collect under `target` -> ABSOLUTE node ids.
 
-    pytest prints ids relative to rootdir(=target); we absolutise them so the
-    runner can execute exactly those ids from any working directory.
+    pytest prints node ids relative to its ROOTDIR, which is the nearest ancestor
+    with a pytest config (e.g. a project's pyproject.toml) — NOT necessarily
+    `target`. So we force `--rootdir=base` and invoke with `cwd=base` and arg `.`,
+    which makes the printed ids relative to `base`; joining `base/id` is then the
+    real on-disk path (no doubling). Verified against an ancestor-config tree.
     """
     base = Path(target).resolve()
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "--co", "-q", str(base)],
-        capture_output=True, text=True,
+        [sys.executable, "-m", "pytest", "--co", "-q", "--rootdir", str(base), "."],
+        cwd=str(base), capture_output=True, text=True,
     )
     ids: list[str] = []
     for line in completed.stdout.splitlines():
         line = line.strip()
         if "::" not in line:
             continue
-        file_part = line.split("::", 1)[0]
-        ids.append(line if Path(file_part).is_absolute() else str(base / line))
+        file_part, _, rest = line.partition("::")
+        abs_file = file_part if Path(file_part).is_absolute() else str(base / file_part)
+        ids.append(f"{abs_file}::{rest}")
     return ids
 
 
 def pytest_id_runner(node_ids: list[str]) -> int:
-    """Production runner: run exactly the mandated node ids; return the exit code.
+    """Production runner: run exactly the mandated (absolute) node ids; exit code.
 
     Never runs with an empty id list (that would mean "run everything") — an
     empty mandated set is handled upstream in `measure_mandated` as UNMET.
@@ -380,13 +413,14 @@ def evaluate_measured_mandated_default(
         )
     try:
         manifest = load_impact_manifest(manifest_path)
-    except (OSError, json.JSONDecodeError) as exc:
-        # Fail closed instead of leaking a traceback (red-team LOW-7).
-        return GateResult(
-            from_phase, to_phase, Verdict.FAIL, f"impact manifest unreadable: {exc}",
+        return evaluate_measured_mandated(
+            from_phase, to_phase, target=target, manifest=manifest,
+            collector=pytest_collector, runner=pytest_id_runner,
+            conditional=conditional, skipped=skipped,
         )
-    return evaluate_measured_mandated(
-        from_phase, to_phase, target=target, manifest=manifest,
-        collector=pytest_collector, runner=pytest_id_runner,
-        conditional=conditional, skipped=skipped,
-    )
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        # Fail closed instead of leaking a traceback — unreadable/malformed
+        # manifest, or a hash/collect I/O error (red-team LOW-7).
+        return GateResult(
+            from_phase, to_phase, Verdict.FAIL, f"impact gate unevaluable: {exc}",
+        )

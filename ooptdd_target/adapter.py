@@ -171,7 +171,7 @@ def emit_forge_rejected_phase(backend, cid: str) -> str:
         evidence = measure_mandated(
             d, (ImpactReq("test_scw.py::test_contract"),),
             collector=pytest_collector, runner=pytest_id_runner)
-    if evidence.met is False and evidence.exit_code == 5:
+    if evidence.met is False and evidence.exit_code == 5 and "missing" in evidence.source:
         backend.ship([
             _ev(cid, "mandated_forge_rejected", exit_code=evidence.exit_code,
                 source=evidence.source, transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
@@ -201,7 +201,7 @@ def emit_content_forge_rejected_phase(backend, cid: str) -> str:
         Path(d, "test_scw_impact.py").write_text("def test_contract():\n    assert True  # forged\n")
         req = ImpactReq("test_scw_impact.py::test_contract", hashlib.sha256(canonical).hexdigest())
         evidence = measure_mandated(d, (req,), collector=pytest_collector, runner=pytest_id_runner)
-    if evidence.met is False and evidence.exit_code == 6:
+    if evidence.met is False and evidence.exit_code == 6 and "sha-mismatch" in evidence.source:
         backend.ship([
             _ev(cid, "content_forge_rejected", exit_code=evidence.exit_code,
                 source=evidence.source, transition="SCW->MetaReview", kg_anchor=_KG_ANCHOR)
