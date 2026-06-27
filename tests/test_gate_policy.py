@@ -1,6 +1,6 @@
 """Enforcement-mode mapping — INFORMATIONAL advisory vs BLOCKER fail-closed."""
 
-from apt_engine.gate_policy import EnforcementMode, OutwardVerdict, enforce
+from apt_engine.contrib.gate_policy import EnforcementMode, OutwardVerdict, enforce
 
 BLOCK = EnforcementMode.BLOCKER
 INFO = EnforcementMode.INFORMATIONAL

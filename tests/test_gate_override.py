@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from apt_engine.gate import Verdict, evaluate_transition
-from apt_engine.gate_override import (
+from apt_engine.contrib.gate_override import (
     PERMANENT_PHRASE,
     disclosure,
     make_override,

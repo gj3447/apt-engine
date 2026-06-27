@@ -1,13 +1,13 @@
 """APT config-resolver drift detection — stdlib core, no KG/jinja needed."""
 
-from apt_engine.resolver import (
+from apt_engine.contrib.resolver import (
     CORE_MAGIC_FIELDS,
     DictConfigSource,
     check_drift,
     find_markers,
     verify_core_present,
 )
-from apt_engine.resolver.config_source import MissingConfigError
+from apt_engine.contrib.resolver.config_source import MissingConfigError
 
 import pytest
 
