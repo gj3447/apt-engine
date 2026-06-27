@@ -60,8 +60,11 @@ COMMANDERS: tuple[Commander, ...] = (
     Commander("eureka", "창조", "create", ("run_cypher",), ("abstractions",)),
     Commander("occam", "정리", "hygiene", ("run_cypher",), ("hygiene",), aliases=("occam-kam",)),
     Commander(
-        "naesengmoon", "검증", "verify",
-        ("acquired", "bindings", "abstractions", "hygiene"), ("verdict",),
+        "naesengmoon",
+        "검증",
+        "verify",
+        ("acquired", "bindings", "abstractions", "hygiene"),
+        ("verdict",),
     ),
     Commander("hades", "실현", "realize", ("verdict",), ("realized",)),
     Commander("jaebaeman", "출격", "dispatch", (), (), is_stage=False),

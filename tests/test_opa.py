@@ -4,9 +4,11 @@ from apt_engine.opa import OPADecision, OPAPolicy, StaticOPAPolicy
 
 
 def test_static_policy_allow_and_deny():
-    pol = StaticOPAPolicy({
-        "apt/phase_gates/sa_to_sp/allow": lambda inp: inp.get("anchor_complete", False),
-    })
+    pol = StaticOPAPolicy(
+        {
+            "apt/phase_gates/sa_to_sp/allow": lambda inp: inp.get("anchor_complete", False),
+        }
+    )
     assert pol.evaluate("apt/phase_gates/sa_to_sp/allow", {"anchor_complete": True}).allow is True
     assert pol.evaluate("apt/phase_gates/sa_to_sp/allow", {"anchor_complete": False}).allow is False
 

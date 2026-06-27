@@ -60,7 +60,8 @@ def test_mandated_rejects_unrelated_dir(capsys, tmp_path):
     man = tmp_path / "apt-impact.json"
     man.write_text(json.dumps({"SCW->MetaReview": {"required": ["test_scw.py::test_contract"]}}))
     rc, out = _run(
-        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
+        capsys,
+        ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 1 and out["verdict"] == "FAIL"
 
@@ -74,10 +75,18 @@ def test_mandated_accepts_sha_pinned_test(capsys, tmp_path):
     tf.write_text("def test_contract():\n    assert True\n")
     sha = hashlib.sha256(tf.read_bytes()).hexdigest()
     man = tmp_path / "apt-impact.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": "test_scw_impact.py::test_contract", "sha256": sha}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [{"node_id": "test_scw_impact.py::test_contract", "sha256": sha}]
+                }
+            }
+        )
+    )
     rc, out = _run(
-        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
+        capsys,
+        ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 0 and out["verdict"] == "PASS"
 
@@ -88,12 +97,27 @@ def test_mandated_rejects_content_forge(capsys, tmp_path):
     import json
 
     canonical = b"def test_contract():\n    assert True\n"
-    (tmp_path / "test_scw_impact.py").write_text("def test_contract():\n    assert True  # forged\n")
+    (tmp_path / "test_scw_impact.py").write_text(
+        "def test_contract():\n    assert True  # forged\n"
+    )
     man = tmp_path / "apt-impact.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": "test_scw_impact.py::test_contract", "sha256": hashlib.sha256(canonical).hexdigest()}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [
+                        {
+                            "node_id": "test_scw_impact.py::test_contract",
+                            "sha256": hashlib.sha256(canonical).hexdigest(),
+                        }
+                    ]
+                }
+            }
+        )
+    )
     rc, out = _run(
-        capsys, ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
+        capsys,
+        ["gate", "SCW", "MetaReview", "--measure", str(tmp_path), "--impact-manifest", str(man)],
     )
     assert rc == 1 and out["verdict"] == "FAIL"
 
@@ -110,10 +134,23 @@ def test_mandated_under_ancestor_pytest_config(capsys, tmp_path):
     tf = sub / "test_scw.py"
     tf.write_text("def test_contract():\n    assert True\n")
     man = tmp_path / "apt-impact.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [
+                        {
+                            "node_id": "test_scw.py::test_contract",
+                            "sha256": hashlib.sha256(tf.read_bytes()).hexdigest(),
+                        }
+                    ]
+                }
+            }
+        )
+    )
     rc, out = _run(
-        capsys, ["gate", "SCW", "MetaReview", "--measure", str(sub), "--impact-manifest", str(man)],
+        capsys,
+        ["gate", "SCW", "MetaReview", "--measure", str(sub), "--impact-manifest", str(man)],
     )
     assert rc == 0 and out["verdict"] == "PASS"
 
@@ -122,7 +159,10 @@ def _mandated_default(target, manifest):
     from apt_engine.precondition import evaluate_measured_mandated_default
 
     return evaluate_measured_mandated_default(
-        "SCW", "MetaReview", target=str(target), manifest_path=str(manifest),
+        "SCW",
+        "MetaReview",
+        target=str(target),
+        manifest_path=str(manifest),
     )
 
 
@@ -136,8 +176,20 @@ def test_config_injection_collect_only_is_rejected(tmp_path):
     tf.write_text("def test_contract():\n    assert False\n")
     (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --collect-only\n")
     man = tmp_path / "m.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [
+                        {
+                            "node_id": "test_scw.py::test_contract",
+                            "sha256": hashlib.sha256(tf.read_bytes()).hexdigest(),
+                        }
+                    ]
+                }
+            }
+        )
+    )
     assert _mandated_default(tmp_path, man).verdict.value == "FAIL"
 
 
@@ -168,6 +220,18 @@ def test_warning_phantom_does_not_flip_gate(tmp_path):
         "def test_n():\n    assert True\n"
     )
     man = tmp_path / "m.json"
-    man.write_text(json.dumps({"SCW->MetaReview": {"required": [
-        {"node_id": "test_scw.py::test_contract", "sha256": hashlib.sha256(tf.read_bytes()).hexdigest()}]}}))
+    man.write_text(
+        json.dumps(
+            {
+                "SCW->MetaReview": {
+                    "required": [
+                        {
+                            "node_id": "test_scw.py::test_contract",
+                            "sha256": hashlib.sha256(tf.read_bytes()).hexdigest(),
+                        }
+                    ]
+                }
+            }
+        )
+    )
     assert _mandated_default(tmp_path, man).verdict.value == "PASS"

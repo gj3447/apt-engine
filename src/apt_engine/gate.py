@@ -77,7 +77,9 @@ def evaluate_transition(
 
     if is_self_application(from_phase, to_phase):
         return GateResult(
-            src.name, dst.name, Verdict.FAIL,
+            src.name,
+            dst.name,
+            Verdict.FAIL,
             "self_application_forbidden (max_depth=1, delta=0)",
             dst.gate_version_on_fail,
         )
@@ -85,25 +87,33 @@ def evaluate_transition(
     expected = next_phase(src.name)
     if expected is None or expected.name != dst.name:
         return GateResult(
-            src.name, dst.name, Verdict.FAIL,
+            src.name,
+            dst.name,
+            Verdict.FAIL,
             f"non-adjacent transition; {src.name} must advance to "
             f"{expected.name if expected else '(terminal)'}",
             dst.gate_version_on_fail,
         )
 
     if skipped:
-        return GateResult(src.name, dst.name, Verdict.SKIP, "phase skipped (counted separately, != PASS)")
+        return GateResult(
+            src.name, dst.name, Verdict.SKIP, "phase skipped (counted separately, != PASS)"
+        )
 
     if not precondition_met:
         return GateResult(
-            src.name, dst.name, Verdict.FAIL,
+            src.name,
+            dst.name,
+            Verdict.FAIL,
             f"precondition unmet: {dst.precondition}",
             dst.gate_version_on_fail,
         )
 
     if conditional:
         return GateResult(
-            src.name, dst.name, Verdict.CONDITIONAL,
+            src.name,
+            dst.name,
+            Verdict.CONDITIONAL,
             "precondition partially met; follow-up VR required before unlock",
         )
 
