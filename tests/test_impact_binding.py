@@ -7,6 +7,7 @@ Collector/runner/hasher are injected here (fakes); production uses real pytest.
 """
 
 import json
+from pathlib import Path
 
 from apt_engine.precondition import (
     ImpactReq,
@@ -16,6 +17,7 @@ from apt_engine.precondition import (
     evaluate_measured_mandated_default,
     load_impact_manifest,
     measure_mandated,
+    pytest_collector,
 )
 
 
@@ -171,4 +173,57 @@ def test_mandated_default_missing_manifest_fails_closed(tmp_path):
         "SCW", "MetaReview", target=str(tmp_path), manifest_path=str(tmp_path / "nope.json"),
     )
     assert r.verdict.value == "FAIL"
-    assert "unreadable" in r.reason
+    assert "unevaluable" in r.reason
+
+
+def test_collector_works_under_ancestor_pytest_config(tmp_path):
+    # red-team HIGH: pytest's rootdir is the nearest ancestor with config, NOT
+    # `target`. A real project has pyproject at the ROOT; collecting a SUBDIR must
+    # still yield runnable absolute ids (no path doubling). The old collector
+    # produced /root/tests/impact/tests/impact/... which does not exist.
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+    sub = tmp_path / "tests" / "impact"
+    sub.mkdir(parents=True)
+    (sub / "test_scw.py").write_text("def test_contract():\n    assert True\n")
+    ids = pytest_collector(str(sub))
+    assert ids, "collector returned nothing under an ancestor pytest config"
+    for nid in ids:
+        assert Path(nid.split("::", 1)[0]).is_file(), f"collector produced a non-existent path: {nid}"
+
+
+def test_manifest_controlling_forger_passes_is_the_trust_boundary():
+    # HONESTY (red-team MEDIUM): sha does NOT stop a forger who also writes the
+    # manifest — they pin their own forged test's sha and pass. This is the
+    # documented TRUST BOUNDARY (the manifest must come from a non-caller trust
+    # root), not a bug. Asserting PASS here pins that boundary explicitly.
+    forged_sha = "deadbeef"
+    m = {"SCW->MetaReview": ImpactSpec(
+        ("SCW", "MetaReview"), (ImpactReq("test_scw.py::test_contract", forged_sha),))}
+    r = evaluate_measured_mandated(
+        "SCW", "MetaReview", target="x", manifest=m,
+        collector=_collector(["/abs/test_scw.py::test_contract"]), runner=_runner(0),
+        hasher=_hasher({"/abs/test_scw.py": forged_sha}),  # forger's own content hash
+    )
+    assert r.verdict.value == "PASS"  # the manifest is the trust root, by design
+
+
+def test_basename_collision_fails_closed():
+    # red-team LOW: two collected files share basename::func -> ambiguous -> fail.
+    r = ImpactReq("test_scw.py::test_contract")
+    ev = measure_mandated(
+        "x", (r,),
+        collector=_collector(["/a/test_scw.py::test_contract", "/b/test_scw.py::test_contract"]),
+        runner=_runner(0),
+    )
+    assert ev.met is False and ev.exit_code == 7
+
+
+def test_malformed_manifest_fails_closed(tmp_path):
+    # red-team LOW: valid JSON but wrong shape must not crash (AttributeError).
+    arr = tmp_path / "arr.json"
+    arr.write_text(json.dumps(["SCW->MetaReview"]))  # a list, not a dict
+    assert load_impact_manifest(str(arr)) == {}
+    r = evaluate_measured_mandated_default(
+        "SCW", "MetaReview", target=str(tmp_path), manifest_path=str(arr),
+    )
+    assert r.verdict.value == "FAIL"  # unknown transition -> fail closed, no traceback
