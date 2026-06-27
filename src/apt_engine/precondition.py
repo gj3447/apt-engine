@@ -20,6 +20,7 @@ deterministic mapping exit_code -> verdict is).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -39,9 +40,11 @@ __all__ = [
     "evaluate_measured_default",
     "pytest_runner",
     # mandated impact-test binding (H-C: target bound to the phase's tests)
+    "ImpactReq",
     "ImpactSpec",
     "NodeCollector",
     "IdRunner",
+    "FileHasher",
     "load_impact_manifest",
     "measure_mandated",
     "evaluate_measured_mandated",
@@ -157,74 +160,134 @@ def evaluate_measured_default(
 #  Mandated impact-test binding (H-C)                                          #
 #  The bare measured gate above runs WHATEVER is under `target`, so an         #
 #  unrelated passing dir satisfies it. Below, the precondition is met only     #
-#  when the tests the transition MANDATES (declared in a manifest, matched by  #
-#  node-id substring) are actually collected under the target AND pass. This   #
-#  binds by NAME, not content (a name-matching trivial test still satisfies    #
-#  it); exact node-id binding is follow-up. The manifest is caller-supplied    #
-#  (`--impact-manifest`), so it is only as trusted as that path — empty/        #
-#  whitespace substrings are rejected (they would match everything).           #
+#  when the tests the transition MANDATES (declared in a manifest as EXACT      #
+#  node ids, optionally content-pinned by sha256) are collected under the       #
+#  target AND pass. With sha256 the bind is CONTENT-bound — a same-named but     #
+#  different test is rejected (closes the name-forge); without it, name-only.    #
+#  The manifest is caller-supplied (`--impact-manifest`), only as trusted as     #
+#  that path. Bare substrings (no `::`) and empty/sha-less names are weaker.     #
 # --------------------------------------------------------------------------- #
 
 NodeCollector = Callable[[str], list[str]]  #: target -> collected pytest node ids
 IdRunner = Callable[[list[str]], int]  #: node ids -> exit code
+FileHasher = Callable[[str], str]  #: file path -> sha256 hex
+
+
+@dataclass(frozen=True)
+class ImpactReq:
+    """One mandated impact test: an exact `file.py::testname` node id plus an
+    optional sha256 of the test FILE.
+
+    With `sha256` set, a same-named but different-content test is REJECTED (the
+    content-forge close); without it the bind is name-only — a same-named trivial
+    test still satisfies it, so sha256 is the honest way to close the forge.
+    """
+
+    node_id: str
+    sha256: str | None = None
 
 
 @dataclass(frozen=True)
 class ImpactSpec:
     """The mandated impact-tests a transition's precondition requires.
 
-    `required` is a tuple of non-empty node-id SUBSTRINGS: a run satisfies the
-    precondition only if the collected tests whose node id contains one of them
-    actually run AND pass. This binds by NAME, not content — a trivially-passing
-    test named to match still satisfies it; binding to an exact node-id set is
-    follow-up work. Empty/whitespace substrings are rejected at load time (they
-    would match every node id, defeating the bind).
+    `required` is a tuple of `ImpactReq` (exact node ids, optionally sha-pinned).
+    The precondition is met only if EVERY required test is collected under the
+    target, its sha256 matches (when pinned), and the set runs green.
     """
 
     transition: tuple[str, str]
-    required: tuple[str, ...]
+    required: tuple["ImpactReq", ...]
 
 
 def _txn_key(from_phase: str, to_phase: str) -> str:
     return f"{from_phase}->{to_phase}"
 
 
+def _norm_node_id(node_id: str) -> str:
+    """Reduce a (possibly absolute) pytest node id to `basename.py::testname`."""
+    file_part, sep, rest = node_id.partition("::")
+    base = Path(file_part).name
+    return f"{base}::{rest}" if sep else base
+
+
+def _file_of_node_id(node_id: str) -> str:
+    """The file-path portion of a pytest node id (before `::`)."""
+    return node_id.partition("::")[0]
+
+
+def _sha256_file(path: str) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _parse_req(entry: object) -> "ImpactReq | None":
+    """Parse a manifest `required` entry: a string node id, or {node_id, sha256}."""
+    if isinstance(entry, str):
+        node_id, sha = entry, None
+    elif isinstance(entry, dict):
+        node_id, sha = entry.get("node_id", ""), entry.get("sha256")
+    else:
+        return None
+    # An exact node id must contain '::' — a bare substring (e.g. "impact") is
+    # rejected so it can never silently match by name (red-team HIGH-1/HIGH-2).
+    if isinstance(node_id, str) and node_id.strip() and "::" in node_id:
+        return ImpactReq(
+            node_id=_norm_node_id(node_id.strip()),
+            sha256=sha if isinstance(sha, str) and sha.strip() else None,
+        )
+    return None
+
+
 def load_impact_manifest(path: str) -> dict[str, ImpactSpec]:
-    """Load `{"SCW->MetaReview": {"required": ["impact"]}}` -> {key: ImpactSpec}."""
+    """Load a manifest -> {transition_key: ImpactSpec}.
+
+    Format: `{"SCW->MetaReview": {"required": [
+        {"node_id": "test_scw.py::test_contract", "sha256": "<hex>"},
+        "test_other.py::test_x"   # string shorthand (name-only, no sha)
+    ]}}`
+    """
     data = json.loads(Path(path).read_text())
     out: dict[str, ImpactSpec] = {}
     for key, spec in data.items():
         frm, _, to = key.partition("->")
-        # Reject empty/whitespace substrings: "" matches every node id and would
-        # let any passing dir forge the precondition (red-team HIGH-1).
-        required = tuple(r for r in spec.get("required", ()) if isinstance(r, str) and r.strip())
-        out[key] = ImpactSpec(transition=(frm, to), required=required)
+        reqs = tuple(r for r in (_parse_req(e) for e in spec.get("required", ())) if r)
+        out[key] = ImpactSpec(transition=(frm, to), required=reqs)
     return out
 
 
 def measure_mandated(
     target: str,
-    required: tuple[str, ...],
+    required: "tuple[ImpactReq, ...]",
     *,
     collector: NodeCollector,
     runner: IdRunner,
+    hasher: FileHasher = _sha256_file,
 ) -> PreconditionEvidence:
-    """Met iff the MANDATED tests are present under `target` AND pass.
+    """Met iff EVERY mandated test is collected under `target`, content-matches
+    (when sha-pinned), and the set runs green.
 
-    exit_code carries the signal: 4 = nothing mandated declared, 5 = no mandated
-    test collected (the forge case), else the runner's real exit code on exactly
-    the mandated node ids.
+    exit_code signal: 4 = nothing mandated declared, 5 = a required node id is
+    missing (structural forge), 6 = a sha256 mismatch (content forge), else the
+    runner's real exit code on exactly the mandated node ids.
     """
-    # Defence in depth: drop empty/whitespace substrings (they match everything).
-    required = tuple(r for r in required if isinstance(r, str) and r.strip())
+    required = tuple(r for r in required if r.node_id and "::" in r.node_id)
     if not required:
         return PreconditionEvidence(met=False, exit_code=4, source="impact:no-mandated-declared")
-    collected = collector(target)
-    matched = [nid for nid in collected if any(r in nid for r in required)]
-    if not matched:
-        return PreconditionEvidence(
-            met=False, exit_code=5, source=f"impact:{target}:0-mandated-collected"
-        )
+    by_norm: dict[str, str] = {}
+    for nid in collector(target):
+        by_norm.setdefault(_norm_node_id(nid), nid)
+    matched: list[str] = []
+    for req in required:
+        abs_id = by_norm.get(req.node_id)
+        if abs_id is None:
+            return PreconditionEvidence(
+                met=False, exit_code=5, source=f"impact:{target}:missing:{req.node_id}"
+            )
+        if req.sha256 is not None and hasher(_file_of_node_id(abs_id)) != req.sha256:
+            return PreconditionEvidence(
+                met=False, exit_code=6, source=f"impact:{target}:sha-mismatch:{req.node_id}"
+            )
+        matched.append(abs_id)
     code = runner(matched)
     return PreconditionEvidence(
         met=(code == 0), exit_code=code, source=f"impact:{target}:{len(matched)}-mandated"
@@ -239,6 +302,7 @@ def evaluate_measured_mandated(
     manifest: dict[str, ImpactSpec],
     collector: NodeCollector,
     runner: IdRunner,
+    hasher: FileHasher = _sha256_file,
     conditional: bool = False,
     skipped: bool = False,
 ) -> GateResult:
@@ -250,7 +314,7 @@ def evaluate_measured_mandated(
     """
     spec = manifest.get(_txn_key(from_phase, to_phase))
     required = spec.required if spec else ()
-    evidence = measure_mandated(target, required, collector=collector, runner=runner)
+    evidence = measure_mandated(target, required, collector=collector, runner=runner, hasher=hasher)
     return evaluate_transition(
         from_phase, to_phase, precondition_met=evidence.met,
         conditional=conditional, skipped=skipped,

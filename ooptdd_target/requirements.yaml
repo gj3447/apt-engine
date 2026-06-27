@@ -76,8 +76,18 @@ requirements:
       symbol: emit_forge_rejected_phase
       must_emit: mandated_forge_rejected
 
+  - id: REQ-MANDATED-CONTENT-FORGE-REJECTED
+    description: the mandated gate rejects a same-named test whose content differs from the pinned sha (exit 6)
+    gate:
+      - {event: content_forge_rejected, op: "==", count: 1}
+    longinus:
+      kg_anchor: finding-ooptdd-apt-engine-fix-harness-20260627
+      source: ooptdd_target/adapter.py
+      symbol: emit_content_forge_rejected_phase
+      must_emit: content_forge_rejected
+
   - id: REQ-MANDATED-ACCEPTS
-    description: the mandated gate accepts a dir whose mandated impact test passes (positive path)
+    description: the mandated gate accepts the exact sha-pinned mandated test passing (positive path)
     gate:
       - {event: mandated_accepts, op: "==", count: 1}
     longinus:
