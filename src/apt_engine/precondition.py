@@ -28,7 +28,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Protocol, runtime_checkable
 
 from .gate import GateResult, Verdict, evaluate_transition
 
@@ -53,6 +53,10 @@ __all__ = [
     "pytest_collector",
     "pytest_id_runner",
     "evaluate_measured_mandated_default",
+    # pluggable manifest trust root (the seam a KG/CI source plugs into; ADR-0003)
+    "ManifestSource",
+    "FileManifestSource",
+    "evaluate_measured_mandated_from",
 ]
 
 #: Transitions whose precondition is a LOCAL, externally-measurable fact (the
@@ -477,21 +481,48 @@ def pytest_id_runner(node_ids: list[str]) -> int:
     return completed.returncode or 1
 
 
-def evaluate_measured_mandated_default(
+@runtime_checkable
+class ManifestSource(Protocol):
+    """A trust root for each transition's mandated impact tests.
+
+    `FileManifestSource` reads a caller-supplied file; a KG/CI-backed source
+    resolves the node ids + shas from a NON-caller trust root — the real close of
+    H-C (see `apt_engine.contrib.kg_manifest` and `docs/ADR-0003`).
+    """
+
+    def specs(self) -> dict[str, ImpactSpec]:
+        """Return `{transition_key: ImpactSpec}` for the mandated impact tests."""
+        ...
+
+
+@dataclass(frozen=True)
+class FileManifestSource:
+    """Default `ManifestSource` — the caller-supplied `--impact-manifest` file.
+
+    Only as trusted as that path (see the TRUST BOUNDARY note above). CI uses a
+    committed, review-gated file (ADR-0003); dgx swaps a KG source at this seam.
+    """
+
+    path: str
+
+    def specs(self) -> dict[str, ImpactSpec]:
+        return load_impact_manifest(self.path)
+
+
+def evaluate_measured_mandated_from(
     from_phase: str,
     to_phase: str,
     *,
     target: str,
-    manifest_path: str,
+    source: ManifestSource,
     conditional: bool = False,
     skipped: bool = False,
 ) -> GateResult:
-    """Production mandated gate — hardwires the real pytest collector + runner.
+    """Production mandated gate resolving the manifest from a `ManifestSource`.
 
-    No injectable collector/runner: the caller supplies only `target` and the
-    manifest path; the mandated tests and their pass/fail are established by real
-    pytest. Pointing `target` at an unrelated passing dir FAILs (its tests do not
-    match the manifest's mandated node ids).
+    The source IS the trust root: `FileManifestSource` (caller file) or a KG/CI
+    source (non-caller). No injectable collector/runner — the tests' pass/fail is
+    established by real pytest. Fails closed on any source / collect / hash error.
     """
     if not is_measurable(from_phase, to_phase):
         return GateResult(
@@ -501,7 +532,7 @@ def evaluate_measured_mandated_default(
             f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
         )
     try:
-        manifest = load_impact_manifest(manifest_path)
+        manifest = source.specs()
         return evaluate_measured_mandated(
             from_phase,
             to_phase,
@@ -514,10 +545,36 @@ def evaluate_measured_mandated_default(
         )
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         # Fail closed instead of leaking a traceback — unreadable/malformed
-        # manifest, or a hash/collect I/O error (red-team LOW-7).
+        # manifest, a hash/collect I/O error, or a source error (a KG source
+        # raises ValueError on a backend failure). red-team LOW-7.
         return GateResult(
             from_phase,
             to_phase,
             Verdict.FAIL,
             f"impact gate unevaluable: {exc}",
         )
+
+
+def evaluate_measured_mandated_default(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    manifest_path: str,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> GateResult:
+    """Production mandated gate over a caller-supplied manifest FILE.
+
+    Thin wrapper over `evaluate_measured_mandated_from` with a `FileManifestSource`.
+    Pointing `target` at an unrelated passing dir FAILs (its tests do not match the
+    manifest's mandated node ids).
+    """
+    return evaluate_measured_mandated_from(
+        from_phase,
+        to_phase,
+        target=target,
+        source=FileManifestSource(manifest_path),
+        conditional=conditional,
+        skipped=skipped,
+    )
