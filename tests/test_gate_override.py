@@ -24,8 +24,11 @@ def _fail_result():
 
 def _ov(**kw):
     base = dict(
-        cycle_id="cyc-1", phase="SCW", bypass_reason="hotfix release window",
-        authorized_by="user: proceed", created_at=NOW,
+        cycle_id="cyc-1",
+        phase="SCW",
+        bypass_reason="hotfix release window",
+        authorized_by="user: proceed",
+        created_at=NOW,
     )
     base.update(kw)
     return make_override(**base)

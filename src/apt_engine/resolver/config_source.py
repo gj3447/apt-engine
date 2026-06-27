@@ -52,9 +52,7 @@ def verify_core_present(
     """Raise MissingConfigError if any core magic field is absent from cfg."""
     missing = [f for f in core_fields if f not in cfg]
     if missing:
-        raise MissingConfigError(
-            f"core magic fields missing in {CONFIG_NODE_NAME}: {missing}"
-        )
+        raise MissingConfigError(f"core magic fields missing in {CONFIG_NODE_NAME}: {missing}")
 
 
 class CypherConfigSource:
@@ -65,8 +63,9 @@ class CypherConfigSource:
 
     _CACHE_TTL = 60.0
 
-    def __init__(self, uri: str, user: str, password: str,
-                 node_name: str = CONFIG_NODE_NAME) -> None:
+    def __init__(
+        self, uri: str, user: str, password: str, node_name: str = CONFIG_NODE_NAME
+    ) -> None:
         from neo4j import GraphDatabase  # lazy: optional dep
 
         self._driver = GraphDatabase.driver(uri, auth=(user, password))

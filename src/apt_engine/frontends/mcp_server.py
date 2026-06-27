@@ -25,9 +25,15 @@ from ..precondition import evaluate_measured_default, evaluate_measured_mandated
 
 def _chain() -> list[dict[str, Any]]:
     return [
-        {"number": p.number, "name": p.name, "title": p.title, "optional": p.optional,
-         "precondition": p.precondition, "postcondition": p.postcondition,
-         "gate_version_on_fail": p.gate_version_on_fail}
+        {
+            "number": p.number,
+            "name": p.name,
+            "title": p.title,
+            "optional": p.optional,
+            "precondition": p.precondition,
+            "postcondition": p.postcondition,
+            "gate_version_on_fail": p.gate_version_on_fail,
+        }
         for p in PHASES
     ]
 
@@ -36,32 +42,63 @@ def _detect(repo_path: str) -> dict[str, Any]:
     return detect_phase(repo_path)
 
 
-def _gate(from_phase: str, to_phase: str, precondition_met: bool = False,
-          conditional: bool = False, skipped: bool = False) -> dict[str, Any]:
+def _gate(
+    from_phase: str,
+    to_phase: str,
+    precondition_met: bool = False,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> dict[str, Any]:
     # Fail-closed: an UNSTATED precondition is treated as unmet, never a silent
     # PASS. Anti-fake-green substrate -> the precondition must be proven, not
     # assumed. (deep-think 2026-06-27 frontier #3; KG: finding-ooptdd-apt-engine-fix-harness-20260627)
-    r = evaluate_transition(from_phase, to_phase, precondition_met=precondition_met,
-                            conditional=conditional, skipped=skipped)
-    return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
-            "reason": r.reason, "gate_version": r.gate_version}
+    r = evaluate_transition(
+        from_phase,
+        to_phase,
+        precondition_met=precondition_met,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    return {
+        "from_phase": r.from_phase,
+        "to_phase": r.to_phase,
+        "verdict": r.verdict.value,
+        "reason": r.reason,
+        "gate_version": r.gate_version,
+    }
 
 
-def _gate_measured(from_phase: str, to_phase: str, target: str,
-                   manifest_path: str | None = None,
-                   conditional: bool = False, skipped: bool = False) -> dict[str, Any]:
+def _gate_measured(
+    from_phase: str,
+    to_phase: str,
+    target: str,
+    manifest_path: str | None = None,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> dict[str, Any]:
     # Measured precondition: real pytest on `target`, no caller bool and no
     # injectable runner (frontier #1 wired). With manifest_path, bind to the
     # transition's MANDATED impact_tests (H-C) so an unrelated dir fails.
     if manifest_path is not None:
-        r = evaluate_measured_mandated_default(from_phase, to_phase, target=target,
-                                               manifest_path=manifest_path,
-                                               conditional=conditional, skipped=skipped)
+        r = evaluate_measured_mandated_default(
+            from_phase,
+            to_phase,
+            target=target,
+            manifest_path=manifest_path,
+            conditional=conditional,
+            skipped=skipped,
+        )
     else:
-        r = evaluate_measured_default(from_phase, to_phase, target=target,
-                                      conditional=conditional, skipped=skipped)
-    return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
-            "reason": r.reason, "gate_version": r.gate_version}
+        r = evaluate_measured_default(
+            from_phase, to_phase, target=target, conditional=conditional, skipped=skipped
+        )
+    return {
+        "from_phase": r.from_phase,
+        "to_phase": r.to_phase,
+        "verdict": r.verdict.value,
+        "reason": r.reason,
+        "gate_version": r.gate_version,
+    }
 
 
 def _reconcile(phase: str | None = None) -> dict[str, Any]:
@@ -76,9 +113,15 @@ def _reconcile(phase: str | None = None) -> dict[str, Any]:
 def _legion() -> dict[str, Any]:
     return {
         "roster": [
-            {"name": c.name, "verb_ko": c.verb_ko, "verb_en": c.verb_en,
-             "requires": list(c.requires), "provides": list(c.provides),
-             "is_stage": c.is_stage, "kg_node": KG_CANONICAL_NODE[c.name]}
+            {
+                "name": c.name,
+                "verb_ko": c.verb_ko,
+                "verb_en": c.verb_en,
+                "requires": list(c.requires),
+                "provides": list(c.provides),
+                "is_stage": c.is_stage,
+                "kg_node": KG_CANONICAL_NODE[c.name],
+            }
             for c in COMMANDERS
         ],
         "verdict_commander": "naesengmoon",
@@ -111,7 +154,9 @@ def main() -> int:
     try:
         from fastmcp import FastMCP
     except ImportError as exc:  # pragma: no cover - serve-time only
-        raise SystemExit("apt-engine MCP frontend needs the 'mcp' extra: pip install -e '.[mcp]'") from exc
+        raise SystemExit(
+            "apt-engine MCP frontend needs the 'mcp' extra: pip install -e '.[mcp]'"
+        ) from exc
     mcp = FastMCP("apt-engine")
     register(mcp)
     mcp.run()
