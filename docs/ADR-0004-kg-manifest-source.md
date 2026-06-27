@@ -54,3 +54,32 @@ tests can be authored by KG governance rather than the gated party's working tre
   (this repo ships the source + the contract, unit-tested with a fake client).
 - The execution-environment residual from ADR-0003 (a target `conftest.py` runs
   code) is unchanged — the full sandbox is future dgx work.
+
+## Deployment topology (measured 2026-06-28)
+
+Real-network mapping, so the deploy target is unambiguous:
+
+- The apt-engine engineering graph — `AptEngine`, `AptPhaseV27`, and the
+  `:AptImpactTest` contract — lives **only in the airo KG**, reached via the
+  airo-neo4j **MCP HTTP gateway** (`10.147.17.7:55013`, ZeroTier). Its standard
+  neo4j endpoints are **firewalled**: bolt `7687` is localhost-only on the KG host;
+  HTTP `7474` is not exposed.
+- `neo4j.metahumotonic.com` is a **separate** neo4j (the cosmology KG, 94k nodes,
+  HTTP-443 reachable) — it has **zero** apt-engine nodes, so it is NOT a deploy
+  target for this contract.
+- The dgx nodes (`192.168.10.84/.123`) are on **Tailscale** with **no route** to
+  the KG's ZeroTier net — dgx **cannot reach the KG**. (SSH to dgx works, but the
+  KG is on a different host/network.)
+
+Consequence: because bolt is firewalled, this PR also ships **`http_kg_client`**
+(stdlib `urllib`, neo4j HTTP transactional API) alongside `neo4j_kg_client` —
+**HTTP is the reachable client in this topology.** `http_kg_client` was
+live-verified against a real neo4j (metahumotonic: a parameterised `RETURN` and a
+94,305-node `count`). The real `:AptImpactTest` contract resolves from the **live
+airo KG** (verified via the MCP gateway), and `KG rows → KgManifestSource → gate →
+PASS` was exercised end-to-end with real pytest.
+
+The in-process client (`neo4j_kg_client` bolt or `http_kg_client`) reaches the
+**airo** contract only from a host with a standard airo-KG endpoint — i.e. the KG
+host `10.147.17.7` itself, or wherever the airo KG exposes bolt/HTTP. That is an
+infra/runbook step (open a route or run on the KG host), not an engine change.
