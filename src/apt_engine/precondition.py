@@ -118,7 +118,7 @@ def pytest_runner(target: str) -> int:
     covered with injected fake runners.
     """
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *_PYTEST_ISOLATION, target],
+        [sys.executable, "-m", "pytest", "-q", *_PYTEST_ISOLATION, "--", target],
         capture_output=True,
         env=_isolated_env(),
     )
@@ -430,7 +430,8 @@ def pytest_collector(target: str, rel_files: list[str] | None = None) -> list[st
             *_PYTEST_ISOLATION,
             "--rootdir",
             str(base),
-            *args,
+            "--",  # everything after is a PATH — stops manifest node ids that
+            *args,  # start with '-' from injecting pytest args
         ],
         cwd=str(base),
         capture_output=True,
@@ -464,7 +465,7 @@ def pytest_id_runner(node_ids: list[str]) -> int:
     if not node_ids:
         return 5  # pytest's "no tests collected" code -> treated as unmet
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--no-header", *_PYTEST_ISOLATION, *node_ids],
+        [sys.executable, "-m", "pytest", "-q", "--no-header", *_PYTEST_ISOLATION, "--", *node_ids],
         capture_output=True,
         text=True,
         env=_isolated_env(),
