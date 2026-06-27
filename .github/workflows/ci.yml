@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check src tests ooptdd_target
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e '.[dev]'
+      - run: pytest -q
+
+  contracts:
+    # ADR-0002: the deterministic core must not import the layer-2 ports.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e '.[dev]'
+      - run: lint-imports
+
+  gate:
+    # The TRUSTED RUNNER (ADR-0003). The red-team converged on: a working-tree gate
+    # run by the gated party can't be forge-proof. Here CI — NOT the developer's
+    # machine — runs the measured gate against the committed, review-gated
+    # apt-impact.json, with pytest config/env isolated. Exit 0 iff the transition's
+    # mandated impact tests actually ran green.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install '.[gate]'
+      - name: APT measured gate — SCW -> MetaReview (mandated impact tests)
+        run: apt-engine gate SCW MetaReview --measure tests --impact-manifest apt-impact.json
