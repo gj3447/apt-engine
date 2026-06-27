@@ -43,3 +43,22 @@ def test_core_module_does_not_import_the_belt():
     text = inspect.getsource(gate)
     for name in ("contrib", "circuit_breaker", "opa", "gate_policy", "gate_override"):
         assert name not in text, f"core gate.py references a layer-2 port: {name}"
+
+
+def test_importing_core_does_not_load_contrib():
+    # Stronger than grepping one module (red-team LOW-6): in a FRESH interpreter,
+    # `import apt_engine` must not transitively pull in any apt_engine.contrib.*.
+    import os
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys, apt_engine; "
+        "leaked = [m for m in sys.modules if m.startswith('apt_engine.contrib')]; "
+        "print(','.join(leaked)); "
+        "sys.exit(1 if leaked else 0)"
+    )
+    r = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, env=os.environ.copy(),
+    )
+    assert r.returncode == 0, f"`import apt_engine` pulled in contrib: {r.stdout.strip()}"
