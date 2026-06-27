@@ -119,8 +119,11 @@ The manifest trust root is **pluggable** via the `ManifestSource` seam:
 `FileManifestSource` (the caller / committed file) or — the *non-caller* trust root —
 `apt_engine.contrib.kg_manifest.KgManifestSource` (`pip install '.[kg]'`), which
 resolves the mandated node ids + shas from the KG contract
-`(:AptEngine)-[:MANDATES_IMPACT]->(:AptImpactTest)` and runs on dgx. See
-[`docs/ADR-0004`](docs/ADR-0004-kg-manifest-source.md).
+`(:AptEngine)-[:MANDATES_IMPACT]->(:AptImpactTest)`. It runs wherever the KG is
+reachable — via `neo4j_kg_client` (bolt) or `http_kg_client` (the neo4j HTTP API,
+stdlib, for topologies where bolt is firewalled). See
+[`docs/ADR-0004`](docs/ADR-0004-kg-manifest-source.md) for the measured deployment
+topology.
 
 ## Library
 
