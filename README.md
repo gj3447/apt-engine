@@ -65,9 +65,12 @@ that ADR's reopen clause anticipated.
 
 ### What this engine is NOT (yet)
 
-KG-backed precondition resolution, OPA policy, GateOverride lifecycle, and the
-Claude Code hook layer stay on dgx (`SYMPOSIUM/THEORY/APT/*_prototype/`). This
-engine is the deterministic, KG-free layer those assume.
+The **runtime** for KG-backed precondition resolution, the OPA policy service, the
+GateOverride lifecycle, and the Claude Code hook layer stay on dgx
+(`SYMPOSIUM/THEORY/APT/*_prototype/`). `apt_engine.contrib` holds only the inert,
+stdlib-testable *ports* of those (decision logic, FSMs), not the running service —
+so there is no contradiction with the contrib table above. This engine is the
+deterministic, KG-free layer those assume.
 
 ## Install
 
@@ -87,7 +90,9 @@ apt-engine gate SA SP --precondition-met   # -> PASS (exit 0)
 apt-engine gate SA SP                      # -> FAIL, exit 1 (fail-closed: precondition unstated)
 apt-engine gate SP ST --skip               # -> SKIP (never PASS), exit 1
 apt-engine gate SCW MetaReview --measure tests/impact --impact-manifest apt-impact.json
-                                           #   -> gate on a REAL pytest run of the MANDATED tests
+                                           #   gate on a REAL pytest run of the MANDATED tests
+                                           #   (manifest + tests are project-provided; a missing
+                                           #    manifest fails closed — it does not crash)
 apt-engine gate MetaReview MetaReview      # -> FAIL (self_application_forbidden), exit 1
 ```
 

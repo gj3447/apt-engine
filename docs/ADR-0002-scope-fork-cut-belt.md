@@ -9,9 +9,12 @@
 
 ## Context
 
-The 2026-06-27 deep-think (finding **T2**) measured the engine: of 1474 src LOC,
-**~636 (43%)** were layer-2 ports — `gate_policy`, `circuit_breaker`, `opa`,
-`gate_override`, and `resolver/` — with **no composition root**. `evaluate_transition`
+The 2026-06-27 deep-think (finding **T2**) measured the engine: **~636 LOC** were
+layer-2 ports — `gate_policy`, `circuit_breaker`, `opa`, `gate_override`, and
+`resolver/` — with **no composition root**. (That `~636 LOC` is stable across the
+PR stack; the *fraction* is not: 636/1474 = 43% at the original measurement
+[`3362b38`], ≈ 33% of the 1919-LOC tree at cut time after the H-C work landed.)
+`evaluate_transition`
 imports only `phases.*`; the only callers of `enforce` / `override_allows` /
 `CircuitBreaker` were their own unit tests; `opa` was not even re-exported. Yet
 `apt_engine.__all__` advertised them, and the README listed the same names as both
