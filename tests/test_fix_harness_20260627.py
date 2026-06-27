@@ -53,6 +53,7 @@ Confirm no regression:
 from __future__ import annotations
 
 import inspect
+import re
 from pathlib import Path
 
 from apt_engine.detect import _PHASE_PATTERNS
@@ -86,11 +87,11 @@ def test_cli_gate_does_not_silently_pass_on_unstated_precondition(capsys):
 
     rc = main(["gate", "SA", "SP"])
     out = json.loads(capsys.readouterr().out)
-    assert rc == 0
+    # fail-closed at BOTH layers: non-PASS verdict AND nonzero exit (red-team H-A).
+    assert rc == 1
     assert out["verdict"] != "PASS", (
-        "fail-open: CLI defaults precondition_met=True (cli.py:46 "
-        "`not args.precondition_unmet`) — make precondition opt-in "
-        "(`--precondition-met`), default unmet"
+        "fail-open: CLI defaulted precondition_met=True — precondition is now "
+        "opt-in (`--precondition-met`), default unmet, and exit 0 iff PASS"
     )
 
 
@@ -142,12 +143,11 @@ def test_cleanup_rows_are_marked_engine_local_not_canonical():
 
 # --- A7: truth in advertising ----------------------------------------- #
 
-def test_readme_does_not_carry_the_stale_test_count():
+def test_readme_carries_no_stale_numeric_test_count():
+    # Not just the old "21 passing": any hard-coded "<n> passing" goes stale.
     text = _README.read_text(errors="replace")
-    assert "21 passing" not in text, (
-        "README:107 still advertises '21 passing'; the suite is now larger — "
-        "update the count (and resolve the in-repo/on-dgx module duplication)"
-    )
+    stale = re.findall(r"\b\d+\s+passing\b", text)
+    assert not stale, f"README advertises a hard-coded test count {stale} that will go stale"
 
 
 # ====================================================================== #

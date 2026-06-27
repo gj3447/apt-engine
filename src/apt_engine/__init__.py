@@ -16,9 +16,12 @@ from .gate_policy import EnforcementMode, OutwardVerdict, enforce
 from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_commander
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
 from .precondition import (
+    MEASURABLE_TRANSITIONS,
     PreconditionEvidence,
     TestRunner,
     evaluate_measured,
+    evaluate_measured_default,
+    is_measurable,
     measure,
     pytest_runner,
 )
@@ -41,8 +44,11 @@ __all__ = [
     # measured precondition (truth by pytest exit code, not caller bool)
     "TestRunner",
     "PreconditionEvidence",
+    "MEASURABLE_TRANSITIONS",
+    "is_measurable",
     "measure",
     "evaluate_measured",
+    "evaluate_measured_default",
     "pytest_runner",
     # (a) v9<->v27 reconciliation
     "V9_TO_V27",

@@ -4,9 +4,23 @@ from apt_engine.frontends.mcp_server import build_tools
 from apt_engine.phases import CHAIN
 
 
-def test_all_five_tools_present():
+def test_all_tools_present():
     tools = build_tools()
-    assert set(tools) == {"apt_chain", "apt_detect", "apt_gate", "apt_reconcile", "apt_legion"}
+    assert set(tools) == {
+        "apt_chain", "apt_detect", "apt_gate", "apt_gate_measured", "apt_reconcile", "apt_legion",
+    }
+
+
+def test_gate_measured_tool_maps_exit_code(monkeypatch):
+    # The measured tool runs real pytest via pytest_runner; here we patch the
+    # runner to prove it maps exit code -> verdict (no caller bool involved).
+    import apt_engine.precondition as pre
+
+    gate_m = build_tools()["apt_gate_measured"]
+    monkeypatch.setattr(pre, "pytest_runner", lambda target: 0)
+    assert gate_m("SCW", "MetaReview", "impact")["verdict"] == "PASS"
+    monkeypatch.setattr(pre, "pytest_runner", lambda target: 1)
+    assert gate_m("SCW", "MetaReview", "impact")["verdict"] == "FAIL"
 
 
 def test_chain_tool_returns_canonical_order():

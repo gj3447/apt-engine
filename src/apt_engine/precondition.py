@@ -30,10 +30,24 @@ from .gate import GateResult, evaluate_transition
 __all__ = [
     "TestRunner",
     "PreconditionEvidence",
+    "MEASURABLE_TRANSITIONS",
+    "is_measurable",
     "measure",
     "evaluate_measured",
+    "evaluate_measured_default",
     "pytest_runner",
 ]
+
+#: Transitions whose precondition is a LOCAL, externally-measurable fact (the
+#: from-phase mandates tests we can actually run here). Only these are eligible
+#: for measured gating; every other transition stays caller-asserted by design
+#: (KG-backed resolution for the rest is delegated to dgx/SYMPOSIUM per ADR).
+MEASURABLE_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({("SCW", "MetaReview")})
+
+
+def is_measurable(from_phase: str, to_phase: str) -> bool:
+    """Whether this transition's precondition can be established by measurement here."""
+    return (from_phase, to_phase) in MEASURABLE_TRANSITIONS
 
 #: target -> process exit code (0 == the phase's mandated tests passed).
 TestRunner = Callable[[str], int]
@@ -90,3 +104,33 @@ def pytest_runner(target: str) -> int:
         capture_output=True,
     )
     return completed.returncode
+
+
+def evaluate_measured_default(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> GateResult:
+    """Production measured gate — hardwires the REAL `pytest_runner`.
+
+    Unlike `evaluate_measured`, there is NO injectable `runner`: a caller cannot
+    substitute a fake runner to forge the exit code. The only thing the caller
+    supplies is `target` (which tests to run); the verdict is earned by a real
+    pytest process. This is the entry the CLI/MCP frontends use so that the
+    measured path can never be bypassed by injection.
+
+    NOTE (remaining gap): `target` is not yet bound to the phase's *mandated*
+    impact_tests (so pointing it at unrelated passing tests still passes). Binding
+    `target` to the KG/manifest impact_tests is tracked as follow-up frontier work.
+    """
+    return evaluate_measured(
+        from_phase,
+        to_phase,
+        runner=pytest_runner,
+        target=target,
+        conditional=conditional,
+        skipped=skipped,
+    )

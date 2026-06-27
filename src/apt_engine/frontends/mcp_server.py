@@ -8,7 +8,7 @@ wrap them onto a FastMCP server (imported lazily; only needed at serve time).
     pip install -e '.[mcp]'
     python -m apt_engine.frontends.mcp_server      # stdio MCP server
 
-Tools: apt_chain, apt_detect, apt_gate, apt_reconcile, apt_legion.
+Tools: apt_chain, apt_detect, apt_gate, apt_gate_measured, apt_reconcile, apt_legion.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from ..gate import Verdict, evaluate_transition
 from ..legion import COMMANDERS, KG_CANONICAL_NODE, hades_realizes
 from ..phase_map import V9_TO_V27, to_v9, to_v27
 from ..phases import PHASES
+from ..precondition import evaluate_measured_default
 
 
 def _chain() -> list[dict[str, Any]]:
@@ -42,6 +43,16 @@ def _gate(from_phase: str, to_phase: str, precondition_met: bool = False,
     # assumed. (deep-think 2026-06-27 frontier #3; KG: finding-ooptdd-apt-engine-fix-harness-20260627)
     r = evaluate_transition(from_phase, to_phase, precondition_met=precondition_met,
                             conditional=conditional, skipped=skipped)
+    return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
+            "reason": r.reason, "gate_version": r.gate_version}
+
+
+def _gate_measured(from_phase: str, to_phase: str, target: str,
+                   conditional: bool = False, skipped: bool = False) -> dict[str, Any]:
+    # Measured precondition: real pytest on `target`, no caller bool and no
+    # injectable runner (frontier #1 wired). For SCW->MetaReview and peers.
+    r = evaluate_measured_default(from_phase, to_phase, target=target,
+                                  conditional=conditional, skipped=skipped)
     return {"from_phase": r.from_phase, "to_phase": r.to_phase, "verdict": r.verdict.value,
             "reason": r.reason, "gate_version": r.gate_version}
 
@@ -77,6 +88,7 @@ def build_tools() -> dict[str, Callable[..., Any]]:
         "apt_chain": _chain,
         "apt_detect": _detect,
         "apt_gate": _gate,
+        "apt_gate_measured": _gate_measured,
         "apt_reconcile": _reconcile,
         "apt_legion": _legion,
     }
