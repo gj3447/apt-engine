@@ -19,7 +19,7 @@ from . import resolver
 from .circuit_breaker import CircuitBreaker, InMemoryStore, State
 from .gate_override import GateOverride, disclosure, make_override, override_allows
 from .gate_policy import EnforcementMode, OutwardVerdict, enforce
-from .kg_manifest import KgClient, KgManifestSource, neo4j_kg_client
+from .kg_manifest import KgClient, KgManifestSource, http_kg_client, neo4j_kg_client
 from .opa import HTTPOPAClient, OPADecision, OPAPolicy, StaticOPAPolicy
 
 __all__ = [
@@ -38,8 +38,9 @@ __all__ = [
     "OPADecision",
     "OPAPolicy",
     "StaticOPAPolicy",
-    # KG-backed manifest source (non-caller trust root, ADR-0003) — runs on dgx.
+    # KG-backed manifest source (non-caller trust root, ADR-0003/0004).
     "KgClient",
     "KgManifestSource",
     "neo4j_kg_client",
+    "http_kg_client",
 ]
