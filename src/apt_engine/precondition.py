@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .gate import GateResult, evaluate_transition
+from .gate import GateResult, Verdict, evaluate_transition
 
 __all__ = [
     "TestRunner",
@@ -138,6 +138,11 @@ def evaluate_measured_default(
     passing dir satisfies it. For the mandated binding (target bound to the
     phase's declared impact_tests), use `evaluate_measured_mandated_default`.
     """
+    if not is_measurable(from_phase, to_phase):
+        return GateResult(
+            from_phase, to_phase, Verdict.FAIL,
+            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
+        )
     return evaluate_measured(
         from_phase,
         to_phase,
@@ -152,8 +157,12 @@ def evaluate_measured_default(
 #  Mandated impact-test binding (H-C)                                          #
 #  The bare measured gate above runs WHATEVER is under `target`, so an         #
 #  unrelated passing dir satisfies it. Below, the precondition is met only     #
-#  when the tests the transition MANDATES (declared in a trusted manifest,     #
-#  not chosen by the caller) are actually collected under the target AND pass. #
+#  when the tests the transition MANDATES (declared in a manifest, matched by  #
+#  node-id substring) are actually collected under the target AND pass. This   #
+#  binds by NAME, not content (a name-matching trivial test still satisfies    #
+#  it); exact node-id binding is follow-up. The manifest is caller-supplied    #
+#  (`--impact-manifest`), so it is only as trusted as that path — empty/        #
+#  whitespace substrings are rejected (they would match everything).           #
 # --------------------------------------------------------------------------- #
 
 NodeCollector = Callable[[str], list[str]]  #: target -> collected pytest node ids
@@ -164,10 +173,12 @@ IdRunner = Callable[[list[str]], int]  #: node ids -> exit code
 class ImpactSpec:
     """The mandated impact-tests a transition's precondition requires.
 
-    `required` is a non-empty tuple of node-id substrings: a run satisfies the
-    precondition only if the collected tests intersect these AND pass. The
-    substrings come from a trusted manifest keyed by transition, NOT from the
-    caller — so a caller cannot redefine "mandated" to match a dummy test.
+    `required` is a tuple of non-empty node-id SUBSTRINGS: a run satisfies the
+    precondition only if the collected tests whose node id contains one of them
+    actually run AND pass. This binds by NAME, not content — a trivially-passing
+    test named to match still satisfies it; binding to an exact node-id set is
+    follow-up work. Empty/whitespace substrings are rejected at load time (they
+    would match every node id, defeating the bind).
     """
 
     transition: tuple[str, str]
@@ -184,7 +195,10 @@ def load_impact_manifest(path: str) -> dict[str, ImpactSpec]:
     out: dict[str, ImpactSpec] = {}
     for key, spec in data.items():
         frm, _, to = key.partition("->")
-        out[key] = ImpactSpec(transition=(frm, to), required=tuple(spec.get("required", ())))
+        # Reject empty/whitespace substrings: "" matches every node id and would
+        # let any passing dir forge the precondition (red-team HIGH-1).
+        required = tuple(r for r in spec.get("required", ()) if isinstance(r, str) and r.strip())
+        out[key] = ImpactSpec(transition=(frm, to), required=required)
     return out
 
 
@@ -201,6 +215,8 @@ def measure_mandated(
     test collected (the forge case), else the runner's real exit code on exactly
     the mandated node ids.
     """
+    # Defence in depth: drop empty/whitespace substrings (they match everything).
+    required = tuple(r for r in required if isinstance(r, str) and r.strip())
     if not required:
         return PreconditionEvidence(met=False, exit_code=4, source="impact:no-mandated-declared")
     collected = collector(target)
@@ -293,7 +309,18 @@ def evaluate_measured_mandated_default(
     pytest. Pointing `target` at an unrelated passing dir FAILs (its tests do not
     match the manifest's mandated node ids).
     """
-    manifest = load_impact_manifest(manifest_path)
+    if not is_measurable(from_phase, to_phase):
+        return GateResult(
+            from_phase, to_phase, Verdict.FAIL,
+            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
+        )
+    try:
+        manifest = load_impact_manifest(manifest_path)
+    except (OSError, json.JSONDecodeError) as exc:
+        # Fail closed instead of leaking a traceback (red-team LOW-7).
+        return GateResult(
+            from_phase, to_phase, Verdict.FAIL, f"impact manifest unreadable: {exc}",
+        )
     return evaluate_measured_mandated(
         from_phase, to_phase, target=target, manifest=manifest,
         collector=pytest_collector, runner=pytest_id_runner,
