@@ -1,6 +1,6 @@
 """Circuit breaker FSM — redis-free InMemoryStore + injected clock (deterministic)."""
 
-from apt_engine.circuit_breaker import (
+from apt_engine.contrib.circuit_breaker import (
     CircuitBreaker,
     InMemoryStore,
     State,
