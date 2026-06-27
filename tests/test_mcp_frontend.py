@@ -16,7 +16,10 @@ def test_chain_tool_returns_canonical_order():
 
 def test_gate_tool_matches_core_semantics():
     gate = build_tools()["apt_gate"]
-    assert gate("SA", "SP")["verdict"] == "PASS"
+    # Fail-closed: the precondition must be explicitly asserted to PASS; an
+    # unstated precondition is never a silent PASS (frontier #3 fix).
+    assert gate("SA", "SP", precondition_met=True)["verdict"] == "PASS"
+    assert gate("SA", "SP")["verdict"] != "PASS"
     assert gate("SP", "ST", skipped=True)["verdict"] == "SKIP"
     assert gate("ST", "SCW", precondition_met=False)["gate_version"] == "v27_phase_scw_dispatch_guard"
 

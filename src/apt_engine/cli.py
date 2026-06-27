@@ -2,7 +2,7 @@
 
   apt-engine detect <repo_path>   # on-disk APT phase detection -> JSON
   apt-engine chain                # print canonical phase chain + contracts
-  apt-engine gate <from> <to>     # evaluate a transition (preconds via flags)
+  apt-engine gate <from> <to>     # evaluate a transition (fail-closed; --precondition-met to assert)
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _cmd_gate(args: argparse.Namespace) -> int:
     result = evaluate_transition(
         args.from_phase,
         args.to_phase,
-        precondition_met=not args.precondition_unmet,
+        precondition_met=args.precondition_met,
         conditional=args.conditional,
         skipped=args.skip,
     )
@@ -76,7 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     g = sub.add_parser("gate", help="evaluate a phase transition")
     g.add_argument("from_phase")
     g.add_argument("to_phase")
-    g.add_argument("--precondition-unmet", action="store_true")
+    g.add_argument(
+        "--precondition-met",
+        action="store_true",
+        help="assert the destination precondition holds (default: fail-closed / unmet)",
+    )
     g.add_argument("--conditional", action="store_true")
     g.add_argument("--skip", action="store_true")
     g.set_defaults(func=_cmd_gate)

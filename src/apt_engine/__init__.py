@@ -15,6 +15,13 @@ from .gate_override import GateOverride, disclosure, make_override, override_all
 from .gate_policy import EnforcementMode, OutwardVerdict, enforce
 from .legion import COMMANDERS, ROSTER, commander, hades_realizes, verdict_commander
 from .phase_map import V9_TO_V27, is_onto, is_total, to_v9, to_v27
+from .precondition import (
+    PreconditionEvidence,
+    TestRunner,
+    evaluate_measured,
+    measure,
+    pytest_runner,
+)
 from .phases import CHAIN, PHASES, Phase, is_self_application, next_phase, phase_by_name
 
 __version__ = "0.1.0"
@@ -31,6 +38,12 @@ __all__ = [
     "can_advance",
     "evaluate_transition",
     "detect_phase",
+    # measured precondition (truth by pytest exit code, not caller bool)
+    "TestRunner",
+    "PreconditionEvidence",
+    "measure",
+    "evaluate_measured",
+    "pytest_runner",
     # (a) v9<->v27 reconciliation
     "V9_TO_V27",
     "to_v27",

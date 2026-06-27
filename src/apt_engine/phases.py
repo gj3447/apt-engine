@@ -42,6 +42,11 @@ class Phase:
     # Phases that may never recursively target themselves (max_depth=1).
     self_application_forbidden: bool = False
     aliases: tuple[str, ...] = field(default_factory=tuple)
+    # Provenance of this row's contract strings: "adr" = transcribed from the
+    # phase-contract ADR; "engine-local" = an engine invention the ADR does not
+    # cover (the ADR tables end at MetaReview). Keeps the SSOT honest about its
+    # own sources. KG: finding-ooptdd-apt-engine-fix-harness-20260627 (T5).
+    provenance: str = "adr"
 
 
 # Canonical lifecycle order (Phase 1..6). ORDER IS LOAD-BEARING — see DRIFT FIX.
@@ -102,6 +107,9 @@ PHASES: tuple[Phase, ...] = (
         gate_version_on_fail="v27_phase_cleanup_dispatch_guard",
         optional=True,
         aliases=("Phase 6",),
+        # The phase-contract ADR's tables end at MetaReview; Cleanup's precond/
+        # postcond/gate_version are an engine convention, not a transcription.
+        provenance="engine-local",
     ),
 )
 
