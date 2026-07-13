@@ -170,4 +170,4 @@ A1 gate/formal(MED) · A2 gate/industry(MED) · A3 gate/pitfalls(HIGH) · A4 gat
 - 신선한 `gj3447/apt-engine` clone + editable Python 3.14.6 환경에서 **199 passed** / **Ruff clean** / **import-linter 2 kept, 0 broken** / `git diff --check` clean.
 - measured-gate dogfood: **PASS / exit 0 / mandated 2개 모두 matched / pinned sha == observed sha / error null**.
 
-**출판 경로**: `GIT/delltower_import` 스냅샷의 `.git` 부재 blocker는 canonical `gj3447/apt-engine` fresh clone으로 검증된 소스만 선별 이식해 해소. landing branch는 `agent/apt-engine-hardening`이며 draft PR로 review한다. `.claude`/SYMPOSIUM·venv/cache/build·복구 중 생성된 `uv.lock`은 이식 대상에서 제외.
+**출판 경로**: `GIT/delltower_import` 스냅샷의 `.git` 부재 blocker는 canonical `gj3447/apt-engine` fresh clone으로 검증된 소스만 선별 이식해 해소. landing branch는 `agent/apt-engine-hardening`이며 draft PR로 review한다. `.claude`/SYMPOSIUM·venv/cache/build는 이식하지 않았고, base PR #1에서 이미 추적된 `uv.lock`은 이 closeout delta가 수정하지 않는다.
