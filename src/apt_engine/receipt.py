@@ -105,7 +105,7 @@ class GateReceipt:
     matched_node_ids: tuple[str, ...]
     #: node_id -> sha256 the manifest PINNED (only the pinned ones)
     sha256_pinned: dict[str, str]
-    #: file path -> sha256 actually OBSERVED on disk during verification
+    #: declared node id -> sha256 actually OBSERVED on disk during verification
     sha256_observed: dict[str, str]
     #: the measured precondition's pytest exit code (None if no measurement ran)
     pytest_exit_code: int | None

@@ -156,11 +156,18 @@ A1 gate/formal(MED) · A2 gate/industry(MED) · A3 gate/pitfalls(HIGH) · A4 gat
 
 - **P2-7 `ERROR` verdict** (§1-C4/A2): `gate.Verdict.ERROR` 신설 — **could-not-evaluate**(manifest 판독불가/source backend 예외 = "무엇을 측정할지조차 모름")를 **evaluated-to-no**(FAIL)와 분리. `precondition.py`의 outer `except`(OSError/JSONDecodeError/ValueError/TypeError)만 ERROR로 승격; 측정 *中* 발견된 missing/sha-drift/unhashable mandated test는 exit code로 FAIL 유지(정밀 경계). `can_advance(ERROR) is False` — fail-closed·CLI exit 동작 무변. 순수 `evaluate_transition`은 ERROR 미반환. MCP `hades_realizes_by_verdict` 테이블을 enum 전수로(ERROR 포함). 영향 테스트 5건(kg_manifest backend-down / receipt unevaluable / impact-binding missing-manifest / manifest-source source-error / receipt-build unit) FAIL→ERROR 정정.
 - **P2-5 `-I` 인터프리터 격리** (B3): 세 측정 subprocess(`pytest_runner`/`pytest_collector`/`pytest_id_runner`) argv에 `python -I` prepend — PYTHONPATH/user-site/CWD sys.path[0] 주입 차단. **운영계약 실측**(dogfood): editable 설치된 gated 패키지는 -I에도 해석되나 `PYTHONPATH=src`류 미설치 경로는 안 됨 = CI gate 정론(설치 아티팩트 측정). repo 자체 apt-impact.json dogfood = **PASS / exit 0 / 양 mandated 매칭 / drift NONE** 실측.
-- **P2-6 `CODEOWNERS`**: measured gate trust-root(apt-impact.json + impact 테스트 + gate/precondition/receipt + CLI/MCP/CI/pyproject + .importlinter/CODEOWNERS) owner-review routing. 실제 required review는 host ruleset/branch protection 책무.
+- **P2-6 `CODEOWNERS`**: measured gate trust-root(`apt-impact.json` + `/src/apt_engine/` + `/tests/` + root pytest/build config + CI/import 계약/CODEOWNERS) owner-review routing. 실제 required review는 host ruleset/branch protection 책무.
 - **P2-8 promotion checklist + `.importlinter` 보강 + README 한 줄**: `docs/PROMOTION_CHECKLIST.md`(6-gate, 0/6 통과 근거) + `.importlinter`에 `independence` 계약(detect/phase_map/legion 병렬 어댑터 상호 미import; 전 `layers`는 receipt.py TYPE_CHECKING back-import cycle로 의도적 미채택) + README "gate PASS = 필요조건이지 충분조건 아님".
 
 **검증**(복구된 production venv, python 3.14.6 editable): **194 passed** / **ruff clean** / **import-linter 2 kept, 0 broken** / measured-gate dogfood PASS.
 
 **환경 사고 + 복구**(2026-07-13): 세션 中 `~/.local/share/uv/python/` 전체가 purge돼(디스크 압박 추정) apt-engine 포함 **PI 워크스페이스 全 venv가 dangling**(3.12·3.13 인터프리터 소멸) + uv 바이너리 소실. 복구: ①시스템 3.9로 코드 import 가능 확인(annotations-only 3.10+) → scratchpad 3.9 verify venv(pytest 7)로 1차 검증 ②`pip install --user uv`로 uv 복구(0.11.28) → `uv sync`로 apt-engine production venv 재구축(3.14.6 + deps + editable). **잔존**: sibling venv(lakatotree/ooptdd/omd/bhgman_tool)는 각자 `uv sync` 필요 — 미실행.
 
-**미결(defer)**: commit/push (P1~P2 전부 동일 blocker — `GIT/delltower_import` 스냅샷 심링크, 원격 clone 필요). `.claude`/SYMPOSIUM gitignored.
+### Codex closeout 검증 — ✅ (2026-07-13)
+
+- ERROR/포트 수/import 계약/CODEOWNERS 강제성의 문서 드리프트를 실제 코드·host 능력에 맞춰 정정. CODEOWNERS는 일부 파일 열거가 아니라 measured run에 영향을 주는 `/src/apt_engine/`, `/tests/`, root pytest/build config, CI 전체를 owner-review로 routing한다(실제 required review는 host ruleset 필요).
+- 회귀 5건 추가: 세 production pytest subprocess의 `python -I` 접두사, PYTHONPATH `pytest.py` fake-green 공격, CLI/MCP ERROR+receipt 직렬화, import-linter core-module 열거 완전성.
+- 신선한 `gj3447/apt-engine` clone + editable Python 3.14.6 환경에서 **199 passed** / **Ruff clean** / **import-linter 2 kept, 0 broken** / `git diff --check` clean.
+- measured-gate dogfood: **PASS / exit 0 / mandated 2개 모두 matched / pinned sha == observed sha / error null**.
+
+**출판 경로**: `GIT/delltower_import` 스냅샷의 `.git` 부재 blocker는 canonical `gj3447/apt-engine` fresh clone으로 검증된 소스만 선별 이식해 해소. landing branch는 `agent/apt-engine-hardening`이며 draft PR로 review한다. `.claude`/SYMPOSIUM·venv/cache/build는 이식하지 않았고, base PR #1에서 이미 추적된 `uv.lock`은 이 closeout delta가 수정하지 않는다.
