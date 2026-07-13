@@ -24,8 +24,9 @@ tests can be authored by KG governance rather than the gated party's working tre
    lazy `neo4j`, injectable `KgClient`) resolves the mandated node ids + shas from
    the KG contract:
    `(:AptEngine {id})-[:MANDATES_IMPACT]->(:AptImpactTest {transition, node_id, sha256})`.
-   It runs on **dgx**, where the bolt route to the KG exists; a backend failure
-   raises `ValueError`, so the gate fails closed.
+   It runs on any host that can reach a standard Neo4j endpoint for the governed
+   graph. A backend failure raises `ValueError`, which the measured wrapper reports
+   as fail-closed `ERROR` (could-not-evaluate), not an evaluated `FAIL`.
 
 3. **The contract is registered in the shared airo KG.** Two `:AptImpactTest`
    nodes for `SCW→MetaReview`, sha-pinned to the committed `tests/impact/
@@ -38,11 +39,12 @@ tests can be authored by KG governance rather than the gated party's working tre
 ## Consequences
 
 - The manifest trust root is now **pluggable**: `FileManifestSource` (caller /
-  CI-committed) or `KgManifestSource` (non-caller, governance-authored). dgx swaps
-  `KgManifestSource(neo4j_kg_client(uri, auth=…))` at the seam — no engine change.
-- Combined with the trusted runner (ADR-0003), **both halves** of the H-C trust
-  boundary are addressed: a non-caller manifest **and** a trusted execution
-  environment.
+  CI-committed) or `KgManifestSource` (non-caller, governance-authored). A deployment
+  can swap `KgManifestSource(neo4j_kg_client(uri, auth=…))` at the seam once it has a
+  governed reachable endpoint — no engine change.
+- The code capability for both H-C halves now exists. The stronger deployment claim
+  applies only when a trusted runner can actually reach a governed, non-caller KG;
+  this repository does not create that network route or governance policy.
 - ADR-0002 is honored: the core does not import the KG layer (import-linter still
   passes); the neo4j dependency is optional and lazy.
 
@@ -71,13 +73,13 @@ Real-network mapping, so the deploy target is unambiguous:
   the KG's ZeroTier net — dgx **cannot reach the KG**. (SSH to dgx works, but the
   KG is on a different host/network.)
 
-Consequence: because bolt is firewalled, this PR also ships **`http_kg_client`**
-(stdlib `urllib`, neo4j HTTP transactional API) alongside `neo4j_kg_client` —
-**HTTP is the reachable client in this topology.** `http_kg_client` was
-live-verified against a real neo4j (metahumotonic: a parameterised `RETURN` and a
-94,305-node `count`). The real `:AptImpactTest` contract resolves from the **live
-airo KG** (verified via the MCP gateway), and `KG rows → KgManifestSource → gate →
-PASS` was exercised end-to-end with real pytest.
+Consequence: this PR ships **`http_kg_client`** (stdlib `urllib`, Neo4j HTTP
+transactional API) alongside `neo4j_kg_client`. The client protocol was
+live-verified against the separate reachable metahumotonic Neo4j; that does **not**
+make the airo transactional endpoint reachable. The real `:AptImpactTest` contract
+was independently verified through the airo MCP gateway, and those returned rows
+were exercised through `KgManifestSource → gate → PASS` with real pytest. The MCP
+gateway is evidence/source access, not an endpoint consumed by `http_kg_client`.
 
 The in-process client (`neo4j_kg_client` bolt or `http_kg_client`) reaches the
 **airo** contract only from a host with a standard airo-KG endpoint — i.e. the KG

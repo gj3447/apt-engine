@@ -15,8 +15,8 @@ irreducible channels are:
 
 1. **Execution environment.** A target `conftest.py` runs arbitrary hook code (a
    `pytest_runtest_makereport` wrapper can rewrite a RED outcome to passed); the
-   test bodies and sibling modules also run as code. `_PYTEST_ISOLATION` isolates
-   *config*, not *code*.
+   test bodies and sibling modules also run as code. `_PYTEST_ISOLATION` plus
+   interpreter `-I` isolate ambient config/path injection, not the target's code.
 2. **The manifest.** Node ids + shas are caller-supplied (`--impact-manifest`); a
    forger who writes the manifest pins their own forged test's sha.
 
@@ -34,23 +34,28 @@ Resolve the trust root *outside* the stdlib engine, consistent with ADR-0002 and
    apt-impact.json`. CI — not the developer's machine — is the runner: the gated
    party does not control the environment, and config/env are isolated. This is the
    execution-environment half of the close.
-2. **Non-caller manifest = the committed, review-gated `apt-impact.json`.** At gate
-   time CI uses the manifest committed to the repo; changing the mandated node ids
-   or their shas requires a reviewed PR. It is not caller-supplied at the moment the
-   gate runs. (A **KG-sourced** manifest is the stronger trust root and remains a
-   dgx/SYMPOSIUM plug at the existing `manifest_path` seam — out of scope for the
-   stdlib engine, per ADR-0002 / dgx-runtime-delegation.)
+2. **Non-caller manifest = the committed `apt-impact.json` under required owner
+   review.** At gate time CI uses the manifest committed to the repo; changing the
+   mandated node ids or their shas must go through the protected-branch review
+   contract. `CODEOWNERS` routes that review, while the repository host's
+   ruleset/branch protection must make it mandatory. The manifest is not supplied
+   ad hoc at invocation time. (A **KG-sourced** manifest is the stronger trust root
+   and remains a dgx/SYMPOSIUM plug at the `ManifestSource` seam — out of scope for
+   the stdlib engine, per ADR-0002 / dgx-runtime-delegation.)
 3. **Runtime dependency made explicit.** The measured gate shells out to pytest, so
    pytest is declared as the `gate` optional extra (`pip install '.[gate]'`); the
    stdlib core itself stays dep-free.
-4. **CI also enforces ADR-0002** via an `import-linter` contract (`.importlinter`):
-   the deterministic core must not import `apt_engine.contrib`.
+4. **CI also enforces ADR-0002** via two `import-linter` contracts
+   (`.importlinter`): the deterministic core must not import `apt_engine.contrib`,
+   and the parallel `detect` / `phase_map` / `legion` adapters must remain mutually
+   independent.
 
 ## Consequences
 
-- For its intended use — **CI-enforced, against the committed manifest** — the gate
-  is sound: the mandated impact tests must actually run green in a runner the gated
-  party does not control.
+- Under its full deployment contract — **CI plus a protected branch requiring owner
+  review of the trust-critical files** — the mandated impact tests must actually run
+  green in a runner the gated party does not control. Without the host-side review
+  rule, `CODEOWNERS` is advisory and this stronger claim does not apply.
 - On a developer's own machine the gate remains **defence-in-depth only** (documented
   in `_PYTEST_ISOLATION` / the precondition TRUST BOUNDARY notes).
 - Honest residual: even in CI the impact tests (and any conftest) run as code from
@@ -63,5 +68,6 @@ Resolve the trust root *outside* the stdlib engine, consistent with ADR-0002 and
 ## Reversibility
 
 CI and the committed manifest are additive and trivially reversible. The
-`manifest_path` seam is unchanged, so a future KG/SYMPOSIUM manifest source plugs in
-without touching the gate.
+`ManifestSource` seam introduced by ADR-0004 now supports both file and KG-backed
+sources without changing the gate algebra; deployment still has to provide a
+reachable, governed source.

@@ -40,8 +40,14 @@ Scope of the engine (v0.1):
    precondition, postcondition, canonical `APT_GATE_VERSION` failure string,
    optional flag, and the MetaReview `self_application_forbidden` rule.
 2. **`gate.py`** — the verdict algebra from `adr-apt-gate-semantics-2026-05-25`:
-   `PASS | FAIL | SKIP | CONDITIONAL`, with the load-bearing rule that **SKIP is
-   never counted as PASS** and CONDITIONAL requires a follow-up VR.
+   `PASS | FAIL | SKIP | CONDITIONAL | ERROR`, with the load-bearing rule that
+   **SKIP is never counted as PASS**. The gate-semantics ADR mandates a follow-up
+   VR before a CONDITIONAL unlocks, but this stateless core does NOT enforce that
+   cross-call obligation — it only guarantees `can_advance(CONDITIONAL) is False`
+   for the evaluated transition; follow-up enforcement is delegated to the
+   stateful runtime (see the honesty note in `gate.py`'s module docstring, PROM16
+   finding A3). `ERROR` (could-not-evaluate) is distinct from `FAIL`
+   (evaluated-to-no) and originates only in the measured wrappers (PROM16 C4).
 3. **`detect.py`** — on-disk phase detection, extracted from
    `bhgman_tool/engine/mcp_server/tools/apt.py` but importing the canonical
    `CHAIN` so detector and contract can never drift.

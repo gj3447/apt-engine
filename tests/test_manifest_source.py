@@ -41,8 +41,9 @@ def test_source_error_fails_closed():
         def specs(self):
             raise ValueError("source down")
 
+    # A source outage = could-not-evaluate -> ERROR (PROM16 C4), still fail-closed.
     r = evaluate_measured_mandated_from("SCW", "MetaReview", target=".", source=Boom())
-    assert r.verdict.value == "FAIL"
+    assert r.verdict.value == "ERROR"
 
 
 def test_non_measurable_transition_short_circuits_before_source():

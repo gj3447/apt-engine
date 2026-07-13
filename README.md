@@ -26,8 +26,8 @@ are *when* and *under what gate* they run. Canonical commander order (from
 | – | jaebaeman  | 출격 (dispatch)| the `Legion.run` dispatch loop itself (not a stage) |
 
 The verdict naesengmoon emits is exactly the gate verdict this engine models in
-`gate.py` (`PASS / FAIL / SKIP / CONDITIONAL`), and hades only realizes after a
-PASS — mirroring `can_advance`. So **`apt_engine` is the deterministic
+`gate.py` (`PASS / FAIL / SKIP / CONDITIONAL / ERROR`), and hades only realizes
+after a PASS — mirroring `can_advance`. So **`apt_engine` is the deterministic
 phase-and-gate substrate**; the legion runtime (commander dispatch, LLM agents)
 layers on top and is out of scope for this stdlib core (see ADR-0001).
 
@@ -36,23 +36,32 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 | module | role |
 |---|---|
 | `apt_engine.phases` | canonical SA→SP→ST→SCW→MetaReview→Cleanup chain + per-phase precondition/postcondition + canonical `APT_GATE_VERSION` strings. Single source of truth. |
-| `apt_engine.gate`   | gate verdict algebra: `PASS / FAIL / SKIP / CONDITIONAL`. **SKIP is never PASS.** Self-application (MetaReview→MetaReview) is forbidden. |
+| `apt_engine.gate`   | gate verdict algebra: `PASS / FAIL / SKIP / CONDITIONAL / ERROR`. **SKIP is never PASS.** `ERROR` = could-not-evaluate (unreadable manifest / source outage), distinct from `FAIL` = evaluated-to-no; both fail-closed. Self-application (MetaReview→MetaReview) is forbidden. Passing both `--conditional` and `--skip` is a caller error (they are mutually exclusive). |
 | `apt_engine.detect` | on-disk phase detection from `apt-progress.md` / `feature-spans.json`. Returns `unknown` rather than fabricating a phase. |
 | `apt_engine.phase_map` | (a) v9 ↔ v27 phase-taxonomy reconciliation (KG's older 6-phase set ↔ the v27 chain). |
 | `apt_engine.legion` | (b) the 7 legion commanders + KG canonical node map; naesengmoon emits the gate verdict, hades realizes iff PASS. |
 | `apt_engine.precondition` | measured precondition — establishes truth from a real pytest exit code (`evaluate_measured_default`, mandated `evaluate_measured_mandated_default`), never a caller bool. |
+| `apt_engine.receipt` | replay-checkable JSON receipt for asserted and measured gate outcomes; records evidence but is not a security attestation. |
 | `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_gate_measured / apt_reconcile / apt_legion`. |
 
 ### `apt_engine.contrib` — layer-2 ports (NOT the core)
 
-`gate_policy`, `circuit_breaker`, `opa`, `gate_override`, and `resolver` are
-ported from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
-`THEORY/APT/{resolver,gate_endpoint}_prototype`). They are **not wired** into
-`evaluate_transition` and are **not** part of the core public surface — import
-them from `apt_engine.contrib`. The gate-server / OPA / config-resolver runtime is
+`gate_policy`, `circuit_breaker`, `opa`, `gate_override`, and `resolver` were ported
+from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
+`THEORY/APT/{resolver,gate_endpoint}_prototype`); `kg_manifest` was added later as
+the optional KG-backed `ManifestSource`. None of the six is wired into
+`evaluate_transition` or belongs to the core public surface — import them
+from `apt_engine.contrib`. The gate-server / OPA / config-resolver runtime is
 the dgx/SYMPOSIUM layer's job (`adr-apt-dgx-runtime-delegation-2026-05-25`); the
 scope-fork decision (CUT, not WIRE) is recorded in
 [`docs/ADR-0002-scope-fork-cut-belt.md`](docs/ADR-0002-scope-fork-cut-belt.md).
+
+A gate **PASS is a necessary, not a sufficient, condition** for the transition
+being *right*: it certifies the mandated tests ran green under isolation, not
+that the design is correct or that the execution environment was trusted (see the
+TRUST BOUNDARY note in `precondition.py`). Promotion of a `contrib` port into the
+core is gated on [`docs/PROMOTION_CHECKLIST.md`](docs/PROMOTION_CHECKLIST.md);
+`.importlinter` structurally forbids the reverse coupling.
 
 Both `phases` and `gate` are transcribed from the canonical contract ADRs:
 - `bhgman_tool/ADRs/apt-phase-contract-2026-05-25.md`
@@ -80,6 +89,11 @@ pip install -e '.[dev]'        # core is dep-free; dev adds pytest + ruff
 ```
 
 No-install dev loop also works: `PYTHONPATH=src python3 -m pytest -q`.
+
+The measured gate is stricter than that development loop: its three pytest
+subprocesses run as `python -I -m pytest`, so `PYTHONPATH` and user-site injection
+are ignored. Install the gated package in the runner environment first (an editable
+install is fine).
 
 ## CLI
 
@@ -109,9 +123,12 @@ pip install '.[gate]'   # the measured gate needs pytest at runtime
 **Read before relying on it.** This gate is **config-isolated defence-in-depth + a
 correctness aid, NOT a security boundary.** A party that controls the working tree
 can still subvert it (a `conftest.py` hook can rewrite a test outcome; the manifest
-is caller-supplied). The sound use is a **trusted runner (CI) against a committed,
-review-gated manifest** — see [`docs/ADR-0003`](docs/ADR-0003-trusted-runner-and-manifest-trust-root.md).
-This repo dogfoods exactly that: CI's `gate` job runs `apt-engine gate SCW MetaReview
+is project-supplied). The intended deployment contract is a **trusted runner (CI)
+against a committed manifest on a protected branch that requires owner review** —
+see [`docs/ADR-0003`](docs/ADR-0003-trusted-runner-and-manifest-trust-root.md).
+`CODEOWNERS` routes the relevant changes for review but does not enforce that rule
+by itself; the repository host must enable the matching ruleset/branch protection.
+This repo defines the CI half: its `gate` job runs `apt-engine gate SCW MetaReview
 --measure tests --impact-manifest apt-impact.json` (`.github/workflows/ci.yml`), and
 `apt-impact.json` pins this repo's own mandated tests (`tests/impact/`).
 

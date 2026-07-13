@@ -4,14 +4,37 @@ Transcribed from `bhgman_tool/ADRs/apt-gate-semantics-2026-05-25.md`
 (KG: adr-apt-gate-semantics-2026-05-25).
 
 A gate evaluates whether a phase transition is permitted. Verdict states are
-PASS | FAIL | SKIP | CONDITIONAL. Load-bearing rule (remediation of
-taliban-blocker-C9-01-2026-05-13): **SKIP is never counted as PASS.** A
-CONDITIONAL verdict requires a follow-up VR before the downstream phase unlocks.
+PASS | FAIL | SKIP | CONDITIONAL | ERROR. Load-bearing rule (remediation of
+taliban-blocker-C9-01-2026-05-13): **SKIP is never counted as PASS.**
+
+ERROR vs FAIL (PROM16 finding C4/A2): FAIL means the gate EVALUATED the
+transition and the answer is no — precondition unmet, non-adjacent,
+self-application, or a mandated test that is missing / content-drifted / did not
+pass (all detected DURING measurement and folded into fail-closed exit codes).
+ERROR means the gate COULD NOT EVEN DETERMINE WHAT TO MEASURE — the manifest
+was unreadable or syntactically invalid JSON, or the manifest source's backend
+raised (KG bolt down, etc.). Collapsing that outage into FAIL mis-reports "we
+couldn't ask" as "we asked and the answer is no". Neither unlocks downstream
+(fail-closed either way); the distinction is for consumers/receipts, not for
+`can_advance`. The pure
+`evaluate_transition` below NEVER returns ERROR — it has no I/O to fail; ERROR
+originates only in the measured wrappers' outer failure path (`precondition.py`).
+
+CONDITIONAL — what this module does and does NOT guarantee (honesty note,
+PROM16 finding A3): the gate-semantics ADR mandates a follow-up VR before a
+CONDITIONAL transition's downstream phase unlocks. `evaluate_transition` is a
+PURE, STATELESS function — it keeps no ledger across calls, so it CANNOT
+enforce that a pending CONDITIONAL was ever resolved before a later transition
+PASSes. What the core guarantees is exactly `can_advance(CONDITIONAL) is
+False` for the evaluated transition itself; cross-call follow-up enforcement
+is delegated to the stateful runtime (KG-backed resolver, SYMPOSIUM/dgx per
+adr-apt-dgx-runtime-delegation-2026-05-25), like the rest of APT's
+truth-establishment. Do not read a stronger guarantee into this module.
 
 This module is the authoritative-verdict shape; it does NOT implement the
-KG-backed precondition resolver (that runtime lives in SYMPOSIUM/dgx per
-adr-apt-dgx-runtime-delegation-2026-05-25). Here we model the verdict algebra
-and the advance decision so tool-layer callers share one definition.
+KG-backed precondition resolver (same delegation as above). Here we model the
+verdict algebra and the advance decision so tool-layer callers share one
+definition.
 """
 
 from __future__ import annotations
@@ -29,10 +52,14 @@ class Verdict(str, Enum):
     FAIL = "FAIL"
     SKIP = "SKIP"
     CONDITIONAL = "CONDITIONAL"
+    # Could-not-evaluate (infrastructure failure), as opposed to evaluated-to-no.
+    # Never produced by the pure `evaluate_transition`; see the module docstring.
+    ERROR = "ERROR"
 
     @property
     def unlocks_downstream(self) -> bool:
-        """Only PASS unlocks the next phase. SKIP != PASS; CONDITIONAL needs follow-up."""
+        """Only PASS unlocks the next phase. SKIP != PASS; CONDITIONAL needs
+        follow-up; ERROR (unevaluable) is fail-closed like everything non-PASS."""
         return self is Verdict.PASS
 
 
@@ -65,13 +92,25 @@ def evaluate_transition(
     """Produce a GateResult for a requested phase transition.
 
     Order of precedence:
+      0. Contradictory flags (`conditional=True` AND `skipped=True`) -> ValueError.
+         A transition cannot be both skipped (never evaluated) and conditionally
+         passed (evaluated, partially met) — accepting both silently returned
+         SKIP by branch-order accident (PROM16 finding A3); contradictory input
+         is a caller bug and is rejected loudly, for EVERY transition (input
+         validation precedes semantic evaluation, including self-application).
       1. Forbidden self-application (MetaReview -> MetaReview) -> FAIL.
       2. Out-of-order / non-adjacent transition -> FAIL.
       3. Explicit skip -> SKIP (never PASS).
       4. Precondition unmet -> FAIL with the destination's gate_version.
-      5. Conditional pass -> CONDITIONAL.
+      5. Conditional pass -> CONDITIONAL (see the module docstring: the follow-up
+         VR obligation is NOT enforced by this stateless function).
       6. Otherwise -> PASS.
     """
+    if conditional and skipped:
+        raise ValueError(
+            "conditional and skipped are mutually exclusive: a skipped transition "
+            "was never evaluated, a conditional one was — pass at most one"
+        )
     src: Phase = phase_by_name(from_phase)
     dst: Phase = phase_by_name(to_phase)
 
