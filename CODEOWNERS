@@ -9,19 +9,23 @@
 #
 # The canonical repository owner is used because it is resolvable on this host.
 
-# The manifest trust root and the impact tests it sha-pins.
-/apt-impact.json                         @gj3447
-/tests/impact/                           @gj3447
+# The manifest plus every project-controlled Python input that can affect the
+# measured run. Directory scope includes package initializers, phase contracts,
+# all tests, and any nested conftest.py added later.
+/apt-impact.json          @gj3447
+/src/apt_engine/          @gj3447
+/tests/                   @gj3447
 
-# The verdict algebra + measurement path that interpret the manifest.
-/src/apt_engine/gate.py                  @gj3447
-/src/apt_engine/precondition.py          @gj3447
-/src/apt_engine/receipt.py               @gj3447
-/src/apt_engine/cli.py                   @gj3447
-/src/apt_engine/frontends/mcp_server.py  @gj3447
+# Root-level pytest/build configuration and a future root conftest.py can alter
+# collection, dependency installation, or outcomes, so they share the trust belt.
+/conftest.py              @gj3447
+/pyproject.toml           @gj3447
+/pytest.ini               @gj3447
+/setup.cfg                @gj3447
+/setup.py                 @gj3447
+/tox.ini                  @gj3447
 
-# The layering contract and this ownership map itself.
-/.github/workflows/ci.yml                @gj3447
-/pyproject.toml                          @gj3447
-/.importlinter                           @gj3447
-/CODEOWNERS                              @gj3447
+# The trusted-runner workflow, structural boundary, and ownership map itself.
+/.github/workflows/       @gj3447
+/.importlinter            @gj3447
+/CODEOWNERS               @gj3447

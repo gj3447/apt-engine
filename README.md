@@ -49,8 +49,8 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 `gate_policy`, `circuit_breaker`, `opa`, `gate_override`, and `resolver` were ported
 from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
 `THEORY/APT/{resolver,gate_endpoint}_prototype`); `kg_manifest` was added later as
-the optional KG-backed `ManifestSource`. All six are **not wired** into
-`evaluate_transition` and are **not** part of the core public surface — import them
+the optional KG-backed `ManifestSource`. None of the six is wired into
+`evaluate_transition` or belongs to the core public surface — import them
 from `apt_engine.contrib`. The gate-server / OPA / config-resolver runtime is
 the dgx/SYMPOSIUM layer's job (`adr-apt-dgx-runtime-delegation-2026-05-25`); the
 scope-fork decision (CUT, not WIRE) is recorded in

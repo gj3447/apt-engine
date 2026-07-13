@@ -13,9 +13,10 @@ self-application, or a mandated test that is missing / content-drifted / did not
 pass (all detected DURING measurement and folded into fail-closed exit codes).
 ERROR means the gate COULD NOT EVEN DETERMINE WHAT TO MEASURE — the manifest
 was unreadable or syntactically invalid JSON, or the manifest source's backend
-raised (KG bolt down, etc.). Collapsing that outage into FAIL mis-reports "we couldn't ask" as "we
-asked and the answer is no". Neither unlocks downstream (fail-closed either
-way); the distinction is for consumers/receipts, not for `can_advance`. The pure
+raised (KG bolt down, etc.). Collapsing that outage into FAIL mis-reports "we
+couldn't ask" as "we asked and the answer is no". Neither unlocks downstream
+(fail-closed either way); the distinction is for consumers/receipts, not for
+`can_advance`. The pure
 `evaluate_transition` below NEVER returns ERROR — it has no I/O to fail; ERROR
 originates only in the measured wrappers' outer failure path (`precondition.py`).
 
