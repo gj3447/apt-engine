@@ -20,7 +20,10 @@ from ..gate import Verdict, evaluate_transition
 from ..legion import COMMANDERS, KG_CANONICAL_NODE, hades_realizes
 from ..phase_map import V9_TO_V27, to_v9, to_v27
 from ..phases import PHASES
-from ..precondition import evaluate_measured_default, evaluate_measured_mandated_default
+from ..precondition import (
+    evaluate_measured_default_with_receipt,
+    evaluate_measured_mandated_default_with_receipt,
+)
 
 
 def _chain() -> list[dict[str, Any]]:
@@ -79,8 +82,9 @@ def _gate_measured(
     # Measured precondition: real pytest on `target`, no caller bool and no
     # injectable runner (frontier #1 wired). With manifest_path, bind to the
     # transition's MANDATED impact_tests (H-C) so an unrelated dir fails.
+    # Either path returns an auditable, replay-checkable receipt.
     if manifest_path is not None:
-        r = evaluate_measured_mandated_default(
+        r, receipt = evaluate_measured_mandated_default_with_receipt(
             from_phase,
             to_phase,
             target=target,
@@ -89,7 +93,7 @@ def _gate_measured(
             skipped=skipped,
         )
     else:
-        r = evaluate_measured_default(
+        r, receipt = evaluate_measured_default_with_receipt(
             from_phase, to_phase, target=target, conditional=conditional, skipped=skipped
         )
     return {
@@ -98,6 +102,7 @@ def _gate_measured(
         "verdict": r.verdict.value,
         "reason": r.reason,
         "gate_version": r.gate_version,
+        "receipt": receipt.to_dict(),
     }
 
 
@@ -126,9 +131,9 @@ def _legion() -> dict[str, Any]:
         ],
         "verdict_commander": "naesengmoon",
         "realize_commander": "hades",
-        "hades_realizes_by_verdict": {
-            v: hades_realizes(Verdict[v]) for v in ("PASS", "FAIL", "SKIP", "CONDITIONAL")
-        },
+        # Every verdict in the enum (incl. ERROR) so the table can never silently
+        # omit a state — hades realizes iff PASS.
+        "hades_realizes_by_verdict": {v.value: hades_realizes(v) for v in Verdict},
     }
 
 

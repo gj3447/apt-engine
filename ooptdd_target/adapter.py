@@ -59,11 +59,12 @@ def _ev(cid: str, event: str, **attrs) -> dict:
 
 
 def _real_pytest(target: str) -> int:
-    """Run pytest over ``target`` in an isolated subprocess; return its REAL exit code.
+    """Run pytest over ``target`` in a separate subprocess; return its REAL exit code.
 
-    A genuine pytest collection+run — not a stubbed bool. Hermetic: plugin
-    autoload is OFF so the inner run can't ship traces or inherit apt-engine's
-    own pytest ini; ``target`` is a fresh tempdir so collection is just our file.
+    A genuine pytest collection+run — not a stubbed bool. For this fix harness,
+    plugin autoload is OFF so the inner run can't ship traces; ``target`` is a
+    fresh tempdir so collection is just our file. This helper is not the production
+    measured-gate isolation boundary in ``apt_engine.precondition``.
     """
     env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     completed = subprocess.run(

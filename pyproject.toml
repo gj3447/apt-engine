@@ -9,7 +9,7 @@ description = "Deterministic APT (SA->SP->ST->SCW->MetaReview->Cleanup) phase-co
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
-authors = [{ name = "airobotics-ailab" }]
+authors = [{ name = "gj3447" }]
 # Core (phases / gate / detect) has ZERO runtime deps (stdlib only).
 # The MCP server frontend needs fastmcp; install via the `mcp` extra.
 dependencies = []

@@ -1,6 +1,7 @@
 """APT mandated impact tests — the contract a `SCW->MetaReview` transition must
 keep green. Run by the measured gate in CI (the trusted runner), pinned by the
-committed, review-gated apt-impact.json. Keep this file STABLE (its sha is pinned).
+committed apt-impact.json and routed for owner review by CODEOWNERS. Keep this file
+STABLE (its sha is pinned).
 """
 
 from apt_engine import CHAIN, Verdict, evaluate_transition

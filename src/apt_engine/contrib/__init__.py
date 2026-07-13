@@ -1,9 +1,10 @@
 """Layer-2 ports — NOT part of the deterministic stdlib core.
 
-These modules (`gate_policy`, `circuit_breaker`, `opa`, `gate_override`,
-`resolver`) were ported from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
-`THEORY/APT/{gate_endpoint,resolver}_prototype`). They are deliberately demoted
-out of the core public surface (see `docs/ADR-0002`):
+Five modules (`gate_policy`, `circuit_breaker`, `opa`, `gate_override`, `resolver`)
+were ported from the dgx-only SYMPOSIUM prototypes (`gj3447/symposium`
+`THEORY/APT/{gate_endpoint,resolver}_prototype`); `kg_manifest` was added later as
+the optional KG-backed `ManifestSource`. All six stay outside the core public
+surface (see `docs/ADR-0002`):
 
   * none is wired into `evaluate_transition` (no composition root), and
   * the gate-server / OPA / config-resolver runtime is the dgx/SYMPOSIUM layer's

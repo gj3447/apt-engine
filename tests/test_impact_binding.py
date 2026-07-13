@@ -216,13 +216,15 @@ def test_default_variant_fails_closed_for_non_measurable_transition():
 
 def test_mandated_default_missing_manifest_fails_closed(tmp_path):
     # red-team LOW-7: a missing/unreadable manifest fails closed, not a traceback.
+    # A missing manifest = could-not-evaluate -> ERROR (PROM16 C4), still
+    # fail-closed (can_advance False), distinct from an evaluated FAIL.
     r = evaluate_measured_mandated_default(
         "SCW",
         "MetaReview",
         target=str(tmp_path),
         manifest_path=str(tmp_path / "nope.json"),
     )
-    assert r.verdict.value == "FAIL"
+    assert r.verdict.value == "ERROR"
     assert "unevaluable" in r.reason
 
 

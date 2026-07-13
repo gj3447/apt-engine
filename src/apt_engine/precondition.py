@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Callable, Protocol, runtime_checkable
 
 from .gate import GateResult, Verdict, evaluate_transition
+from .receipt import GateReceipt, build_gate_receipt
 
 __all__ = [
     "TestRunner",
@@ -40,6 +41,7 @@ __all__ = [
     "measure",
     "evaluate_measured",
     "evaluate_measured_default",
+    "evaluate_measured_default_with_receipt",
     "pytest_runner",
     # mandated impact-test binding (H-C: target bound to the phase's tests)
     "ImpactReq",
@@ -57,6 +59,9 @@ __all__ = [
     "ManifestSource",
     "FileManifestSource",
     "evaluate_measured_mandated_from",
+    # auditable receipt variants (same gate, + a replay-checkable GateReceipt)
+    "evaluate_measured_mandated_from_with_receipt",
+    "evaluate_measured_mandated_default_with_receipt",
 ]
 
 #: Transitions whose precondition is a LOCAL, externally-measurable fact (the
@@ -77,11 +82,22 @@ TestRunner = Callable[[str], int]
 
 @dataclass(frozen=True)
 class PreconditionEvidence:
-    """The measured truth of a phase precondition: `met` iff the tests passed."""
+    """The measured truth of a phase precondition: `met` iff the tests passed.
+
+    `matched_node_ids` / `observed_shas` are the audit trail the receipt needs
+    (which absolute node ids actually ran, which file shas were seen on disk).
+    They default to empty so every existing construction site (`measure`, the
+    early fail-closed returns) keeps working unchanged; only `measure_mandated`
+    populates them.
+    """
 
     met: bool
     exit_code: int
     source: str
+    #: absolute node ids that matched the manifest + (for the green path) ran
+    matched_node_ids: tuple[str, ...] = ()
+    #: (file_path, sha256_hex) actually observed while verifying sha-pinned reqs
+    observed_shas: tuple[tuple[str, str], ...] = ()
 
 
 def measure(runner: TestRunner, target: str) -> PreconditionEvidence:
@@ -118,11 +134,11 @@ def evaluate_measured(
 def pytest_runner(target: str) -> int:
     """Default runner: run pytest on `target` in a subprocess, return its exit code.
 
-    Real I/O — not unit-tested. The deterministic part (exit_code -> verdict) is
-    covered with injected fake runners.
+    The argv isolation boundary and a PYTHONPATH shadow attack have regression
+    coverage; exit-code-to-verdict mapping is covered with injected fake runners.
     """
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *_PYTEST_ISOLATION, "--", target],
+        [sys.executable, *_PY_ISOLATION, "-m", "pytest", "-q", *_PYTEST_ISOLATION, "--", target],
         capture_output=True,
         env=_isolated_env(),
     )
@@ -163,6 +179,44 @@ def evaluate_measured_default(
         target=target,
         conditional=conditional,
         skipped=skipped,
+    )
+
+
+def evaluate_measured_default_with_receipt(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> tuple[GateResult, GateReceipt]:
+    """`evaluate_measured_default` (bare measured path) + an auditable receipt.
+
+    WEAK path (runs whatever is under `target`; no manifest binding) — prefer the
+    mandated variant for a full audit trail. But the receipt still records the
+    REAL pytest exit code + evidence source (a single measured run), so a bare
+    PASS/FAIL is not measurement-blank (review B fix). No mandated/observed-sha
+    data exists on this path (there is no manifest), so those receipt fields stay
+    empty by construction.
+    """
+    if not is_measurable(from_phase, to_phase):
+        result = GateResult(
+            from_phase,
+            to_phase,
+            Verdict.FAIL,
+            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
+        )
+        return result, build_gate_receipt(result, gate_kind="measured-bare", target=target)
+    evidence = measure(pytest_runner, target)  # real pytest, run exactly once
+    result = evaluate_transition(
+        from_phase,
+        to_phase,
+        precondition_met=evidence.met,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    return result, build_gate_receipt(
+        result, gate_kind="measured-bare", target=target, evidence=evidence
     )
 
 
@@ -311,34 +365,60 @@ def measure_mandated(
     except TypeError:
         collected = collector(target)
     matched: list[str] = []
+    # (declared node_id, observed sha) seen while verifying pins -> receipt. Keyed
+    # by the manifest node_id (NOT the absolute file path) so the receipt is
+    # checkout-portable AND joins key-for-key with sha256_pinned (review A/C fix).
+    observed: list[tuple[str, str]] = []
     for req in required:
         hits = [c for c in collected if _node_id_matches(c, req.node_id)]
         if len(hits) > 1:
             # A basename-only id matched >1 file -> fail closed rather than guess
             # (path-qualify the manifest entry to disambiguate). red-team-5 B2.
             return PreconditionEvidence(
-                met=False, exit_code=7, source=f"impact:{target}:ambiguous:{req.node_id}"
+                met=False,
+                exit_code=7,
+                source=f"impact:{target}:ambiguous:{req.node_id}",
+                matched_node_ids=tuple(matched),
+                observed_shas=tuple(observed),
             )
         if not hits:
             return PreconditionEvidence(
-                met=False, exit_code=5, source=f"impact:{target}:missing:{req.node_id}"
+                met=False,
+                exit_code=5,
+                source=f"impact:{target}:missing:{req.node_id}",
+                matched_node_ids=tuple(matched),
+                observed_shas=tuple(observed),
             )
         abs_id = hits[0]
         if req.sha256 is not None:
+            file_part = _file_of_node_id(abs_id)
             try:
-                actual = hasher(_file_of_node_id(abs_id))
+                actual = hasher(file_part)
             except OSError:
                 return PreconditionEvidence(
-                    met=False, exit_code=6, source=f"impact:{target}:unhashable:{req.node_id}"
+                    met=False,
+                    exit_code=6,
+                    source=f"impact:{target}:unhashable:{req.node_id}",
+                    matched_node_ids=tuple(matched),
+                    observed_shas=tuple(observed),
                 )
+            observed.append((req.node_id, actual))  # keyed by declared node_id
             if actual != req.sha256:
                 return PreconditionEvidence(
-                    met=False, exit_code=6, source=f"impact:{target}:sha-mismatch:{req.node_id}"
+                    met=False,
+                    exit_code=6,
+                    source=f"impact:{target}:sha-mismatch:{req.node_id}",
+                    matched_node_ids=tuple(matched),
+                    observed_shas=tuple(observed),
                 )
         matched.append(abs_id)
     code = runner(matched)
     return PreconditionEvidence(
-        met=(code == 0), exit_code=code, source=f"impact:{target}:{len(matched)}-mandated"
+        met=(code == 0),
+        exit_code=code,
+        source=f"impact:{target}:{len(matched)}-mandated",
+        matched_node_ids=tuple(matched),
+        observed_shas=tuple(observed),
     )
 
 
@@ -392,6 +472,22 @@ def evaluate_measured_mandated(
 # the gated party does not control). See the TRUST BOUNDARY note above; the sound
 # guarantee needs trusted CI + a non-caller (KG) manifest.
 _PYTEST_ISOLATION = (
+    # -I isolates the PYTHON interpreter (PROM16 P2 B3): ignores PYTHON* env vars
+    # (PYTHONPATH, PYTHONSTARTUP), the user site-packages dir, and the CWD on
+    # sys.path[0]. Complements the pytest-arg scrub below — a hostile/ambient
+    # PYTHONPATH or a shadowing user-site module can no longer inject into the
+    # measurement subprocess. It is passed to `python`, before `-m pytest`, so it
+    # is prepended in the argv builders (not part of this pytest-args tuple).
+    #
+    # OPERATIONAL CONTRACT (verified 2026-07-13 dogfood): -I still finds the venv
+    # site-packages (selected by sys.executable, not PYTHON* env), so the gate's
+    # own deps AND an *installed* gated package both resolve. It does NOT honour
+    # PYTHONPATH — so the gated project's mandated tests must import their package
+    # from an INSTALLED distribution (editable is fine), not an ambient
+    # `PYTHONPATH=src`. That is the correct posture for a CI gate (measure an
+    # installed artifact, not a source tree on the path) and is exactly the
+    # injection vector -I closes; a repo that only runs tests via PYTHONPATH must
+    # `pip install -e .` in the runner venv first.
     "-o",
     "addopts=",
     "--import-mode=importlib",
@@ -400,6 +496,10 @@ _PYTEST_ISOLATION = (
     "-p",
     "no:cacheprovider",
 )
+
+#: Interpreter-isolation flag prepended to `python` (before `-m pytest`) in every
+#: measurement subprocess — see the note in `_PYTEST_ISOLATION`.
+_PY_ISOLATION = ("-I",)
 
 
 def _isolated_env() -> dict[str, str]:
@@ -427,6 +527,7 @@ def pytest_collector(target: str, rel_files: list[str] | None = None) -> list[st
     completed = subprocess.run(
         [
             sys.executable,
+            *_PY_ISOLATION,
             "-m",
             "pytest",
             "--co",
@@ -469,7 +570,17 @@ def pytest_id_runner(node_ids: list[str]) -> int:
     if not node_ids:
         return 5  # pytest's "no tests collected" code -> treated as unmet
     completed = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--no-header", *_PYTEST_ISOLATION, "--", *node_ids],
+        [
+            sys.executable,
+            *_PY_ISOLATION,
+            "-m",
+            "pytest",
+            "-q",
+            "--no-header",
+            *_PYTEST_ISOLATION,
+            "--",
+            *node_ids,
+        ],
         capture_output=True,
         text=True,
         env=_isolated_env(),
@@ -499,8 +610,9 @@ class ManifestSource(Protocol):
 class FileManifestSource:
     """Default `ManifestSource` — the caller-supplied `--impact-manifest` file.
 
-    Only as trusted as that path (see the TRUST BOUNDARY note above). CI uses a
-    committed, review-gated file (ADR-0003); dgx swaps a KG source at this seam.
+    Only as trusted as that path (see the TRUST BOUNDARY note above). CI can use a
+    committed file under host-enforced owner review (ADR-0003); a reachable runtime
+    can swap a governed KG source at this seam (ADR-0004).
     """
 
     path: str
@@ -522,37 +634,106 @@ def evaluate_measured_mandated_from(
 
     The source IS the trust root: `FileManifestSource` (caller file) or a KG/CI
     source (non-caller). No injectable collector/runner — the tests' pass/fail is
-    established by real pytest. Fails closed on any source / collect / hash error.
+    established by real pytest. Recoverable source or measurement-plumbing
+    exceptions fail closed as ERROR; missing, drifted, or unhashable mandated tests
+    are evaluated evidence and fail closed as FAIL.
+
+    Thin wrapper over `evaluate_measured_mandated_from_with_receipt` that drops
+    the receipt — identical verdict behaviour, kept for callers that don't audit.
     """
+    result, _receipt = evaluate_measured_mandated_from_with_receipt(
+        from_phase,
+        to_phase,
+        target=target,
+        source=source,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    return result
+
+
+def evaluate_measured_mandated_from_with_receipt(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    source: ManifestSource,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> tuple[GateResult, GateReceipt]:
+    """Same gate as `evaluate_measured_mandated_from`, plus an auditable receipt.
+
+    The receipt records the transition, verdict, mandated + matched node ids, the
+    manifest-pinned vs. on-disk-observed shas, the pytest exit code, the manifest
+    trust-root kind, and the runner tier (ci/local) — turning a green into a
+    replay-checkable record. The receipt is emitted on EVERY path (including the
+    not-measurable and unevaluable fail-closed paths), so every non-PASS result is
+    as auditable as a PASS.
+    """
+    source_kind = type(source).__name__
     if not is_measurable(from_phase, to_phase):
-        return GateResult(
+        result = GateResult(
             from_phase,
             to_phase,
             Verdict.FAIL,
             f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
         )
+        return result, build_gate_receipt(
+            result,
+            gate_kind="measured-mandated",
+            target=target,
+            manifest_source_kind=source_kind,
+        )
     try:
         manifest = source.specs()
-        return evaluate_measured_mandated(
-            from_phase,
-            to_phase,
-            target=target,
-            manifest=manifest,
-            collector=pytest_collector,
-            runner=pytest_id_runner,
-            conditional=conditional,
-            skipped=skipped,
+        spec = manifest.get(_txn_key(from_phase, to_phase))
+        required = spec.required if spec else ()
+        evidence = measure_mandated(
+            target, required, collector=pytest_collector, runner=pytest_id_runner
         )
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-        # Fail closed instead of leaking a traceback — unreadable/malformed
-        # manifest, a hash/collect I/O error, or a source error (a KG source
-        # raises ValueError on a backend failure). red-team LOW-7.
-        return GateResult(
+        # Could-not-evaluate -> ERROR, NOT FAIL (PROM16 C4): an unreadable manifest,
+        # syntactically invalid JSON, or a recoverable source/measurement exception
+        # (a KG source raises ValueError when bolt is down) means the gate never
+        # determined WHAT to measure — reporting
+        # that as FAIL would read as "we asked and the answer is no". ERROR is still
+        # fail-closed (can_advance is False), so process/CLI exit behaviour is
+        # unchanged; only the verdict label distinguishes an outage from an earned
+        # red. (Per-test problems found DURING measurement — missing / sha-drifted /
+        # unhashable mandated test — are handled inside measure_mandated as FAIL exit
+        # codes, not here.) red-team LOW-7. Only the MEASUREMENT is absorbed:
+        # evaluate_transition runs below, OUTSIDE this try, so a caller bug
+        # (contradictory flags -> ValueError, unknown phase -> KeyError) still raises
+        # loudly, consistent with every other gate entry point.
+        result = GateResult(
             from_phase,
             to_phase,
-            Verdict.FAIL,
+            Verdict.ERROR,
             f"impact gate unevaluable: {exc}",
         )
+        return result, build_gate_receipt(
+            result,
+            gate_kind="measured-mandated",
+            target=target,
+            manifest_source_kind=source_kind,
+            error=str(exc),
+        )
+    result = evaluate_transition(
+        from_phase,
+        to_phase,
+        precondition_met=evidence.met,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    receipt = build_gate_receipt(
+        result,
+        gate_kind="measured-mandated",
+        target=target,
+        manifest_source_kind=source_kind,
+        evidence=evidence,
+        required=required,
+    )
+    return result, receipt
 
 
 def evaluate_measured_mandated_default(
@@ -571,6 +752,31 @@ def evaluate_measured_mandated_default(
     manifest's mandated node ids).
     """
     return evaluate_measured_mandated_from(
+        from_phase,
+        to_phase,
+        target=target,
+        source=FileManifestSource(manifest_path),
+        conditional=conditional,
+        skipped=skipped,
+    )
+
+
+def evaluate_measured_mandated_default_with_receipt(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    manifest_path: str,
+    conditional: bool = False,
+    skipped: bool = False,
+) -> tuple[GateResult, GateReceipt]:
+    """`evaluate_measured_mandated_default` + an auditable `GateReceipt`.
+
+    Thin wrapper over `evaluate_measured_mandated_from_with_receipt` with a
+    `FileManifestSource` — the entry the CLI `--receipt-out` and the MCP
+    `apt_gate_measured` frontends use.
+    """
+    return evaluate_measured_mandated_from_with_receipt(
         from_phase,
         to_phase,
         target=target,
