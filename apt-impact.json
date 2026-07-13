@@ -3,11 +3,11 @@
     "required": [
       {
         "node_id": "impact/test_apt_contract.py::test_chain_is_canonical",
-        "sha256": "816c6d47ff1667799eb5890a69ab73daab838ce9942e5a085559a54722b0a1bb"
+        "sha256": "57a96bae5ff7505e0556127adedb5698923c6b2a102e867582f5df850b5dd057"
       },
       {
         "node_id": "impact/test_apt_contract.py::test_skip_never_advances",
-        "sha256": "816c6d47ff1667799eb5890a69ab73daab838ce9942e5a085559a54722b0a1bb"
+        "sha256": "57a96bae5ff7505e0556127adedb5698923c6b2a102e867582f5df850b5dd057"
       }
     ]
   }

@@ -5,6 +5,8 @@ the permanent unit home for the resolver behaviour.
 """
 
 import inspect
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,3 +89,38 @@ def test_default_variant_maps_real_runner_exit_code(monkeypatch):
     assert evaluate_measured_default("SCW", "MetaReview", target="impact").verdict.value == "FAIL"
     monkeypatch.setattr(pre, "pytest_runner", lambda target: 0)
     assert evaluate_measured_default("SCW", "MetaReview", target="impact").verdict.value == "PASS"
+
+
+def test_all_production_pytest_subprocesses_use_python_isolated_mode(monkeypatch, tmp_path):
+    """Pin `python -I -m pytest` on every production measurement subprocess."""
+    import apt_engine.precondition as pre
+
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=0, stdout="1 passed\n")
+
+    monkeypatch.setattr(pre.subprocess, "run", fake_run)
+    assert pre.pytest_runner(str(tmp_path)) == 0
+    assert pre.pytest_collector(str(tmp_path)) == []
+    assert pre.pytest_id_runner(["/tmp/test_x.py::test_ok"]) == 0
+
+    assert len(calls) == 3
+    for argv, _kwargs in calls:
+        assert argv[:4] == [sys.executable, "-I", "-m", "pytest"]
+
+
+def test_pytest_runner_ignores_pythonpath_pytest_shadow(tmp_path, monkeypatch):
+    """A PYTHONPATH `pytest.py` must not forge a red target into exit zero."""
+    import apt_engine.precondition as pre
+
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "pytest.py").write_text("raise SystemExit(0)\n")
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "test_red.py").write_text("def test_red():\n    assert False\n")
+    monkeypatch.setenv("PYTHONPATH", str(shadow))
+
+    assert pre.pytest_runner(str(target)) != 0

@@ -38,6 +38,41 @@ def test_fail_exits_nonzero(capsys):
     assert rc == 1 and out["verdict"] == "FAIL"
 
 
+def test_unevaluable_manifest_serializes_error_and_receipt(capsys, tmp_path):
+    receipt_path = tmp_path / "receipt.json"
+    rc, out = _run(
+        capsys,
+        [
+            "gate",
+            "SCW",
+            "MetaReview",
+            "--measure",
+            str(tmp_path),
+            "--impact-manifest",
+            str(tmp_path / "missing.json"),
+            "--receipt-out",
+            str(receipt_path),
+        ],
+    )
+    receipt = json.loads(receipt_path.read_text())
+
+    assert rc == 1
+    assert out["verdict"] == "ERROR"
+    assert receipt["verdict"] == "ERROR"
+    assert receipt["error"]
+
+
+def test_conditional_and_skip_flags_are_mutually_exclusive(capsys):
+    # gate semantics step 0: contradictory flags are a caller bug — the parser
+    # rejects them cleanly (argparse exit 2), no traceback, no silent SKIP.
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["gate", "SP", "ST", "--conditional", "--skip"])
+    assert exc.value.code == 2
+    assert "not allowed with" in capsys.readouterr().err
+
+
 def test_measured_passing_target_exits_zero(capsys, tmp_path):
     # production measured path: a REAL passing pytest run unlocks the transition.
     (tmp_path / "test_green.py").write_text("def test_ok():\n    assert True\n")
