@@ -16,6 +16,8 @@ default `pytest_runner` shells out to pytest and is not unit-tested (the
 deterministic mapping exit_code -> verdict is).
 
 # KG: finding-ooptdd-apt-engine-fix-harness-20260627 (deep-think frontier #1)
+# KG: TASK_apt_engine_measured_gate_preflight_order_2026_07_13
+# KG: CONTRACT_apt_engine_measured_gate_preflight_order_2026_07_13
 """
 
 from __future__ import annotations
@@ -76,6 +78,60 @@ def is_measurable(from_phase: str, to_phase: str) -> bool:
     return (from_phase, to_phase) in MEASURABLE_TRANSITIONS
 
 
+def _preflight_measured_transition(
+    from_phase: str,
+    to_phase: str,
+    *,
+    conditional: bool,
+    skipped: bool,
+) -> GateResult | None:
+    """Validate caller input and settle structural results before measurement I/O.
+
+    An optimistic precondition isolates the gate algebra that cannot depend on
+    measurement truth. Structural FAIL/SKIP is terminal; PASS/CONDITIONAL means
+    the wrapper must still establish the real precondition before its final gate.
+    """
+    result = evaluate_transition(
+        from_phase,
+        to_phase,
+        precondition_met=True,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    return result if result.verdict in (Verdict.FAIL, Verdict.SKIP) else None
+
+
+def _preflight_production_with_receipt(
+    from_phase: str,
+    to_phase: str,
+    *,
+    target: str,
+    gate_kind: str,
+    manifest_source_kind: str = "",
+    conditional: bool,
+    skipped: bool,
+) -> tuple[GateResult, GateReceipt] | None:
+    """Settle structural and production-measurability results before I/O."""
+    result = _preflight_measured_transition(
+        from_phase, to_phase, conditional=conditional, skipped=skipped
+    )
+    if result is None and not is_measurable(from_phase, to_phase):
+        result = GateResult(
+            from_phase,
+            to_phase,
+            Verdict.FAIL,
+            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
+        )
+    if result is None:
+        return None
+    return result, build_gate_receipt(
+        result,
+        gate_kind=gate_kind,
+        target=target,
+        manifest_source_kind=manifest_source_kind,
+    )
+
+
 #: target -> process exit code (0 == the phase's mandated tests passed).
 TestRunner = Callable[[str], int]
 
@@ -121,6 +177,11 @@ def evaluate_measured(
     from `runner`'s exit code, so the gate verdict for this transition is earned
     by a real test run rather than claimed by the caller.
     """
+    preflight = _preflight_measured_transition(
+        from_phase, to_phase, conditional=conditional, skipped=skipped
+    )
+    if preflight is not None:
+        return preflight
     evidence = measure(runner, target)
     return evaluate_transition(
         from_phase,
@@ -165,6 +226,11 @@ def evaluate_measured_default(
     passing dir satisfies it. For the mandated binding (target bound to the
     phase's declared impact_tests), use `evaluate_measured_mandated_default`.
     """
+    preflight = _preflight_measured_transition(
+        from_phase, to_phase, conditional=conditional, skipped=skipped
+    )
+    if preflight is not None:
+        return preflight
     if not is_measurable(from_phase, to_phase):
         return GateResult(
             from_phase,
@@ -199,14 +265,16 @@ def evaluate_measured_default_with_receipt(
     data exists on this path (there is no manifest), so those receipt fields stay
     empty by construction.
     """
-    if not is_measurable(from_phase, to_phase):
-        result = GateResult(
-            from_phase,
-            to_phase,
-            Verdict.FAIL,
-            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
-        )
-        return result, build_gate_receipt(result, gate_kind="measured-bare", target=target)
+    preflight = _preflight_production_with_receipt(
+        from_phase,
+        to_phase,
+        target=target,
+        gate_kind="measured-bare",
+        conditional=conditional,
+        skipped=skipped,
+    )
+    if preflight is not None:
+        return preflight
     evidence = measure(pytest_runner, target)  # real pytest, run exactly once
     result = evaluate_transition(
         from_phase,
@@ -440,6 +508,11 @@ def evaluate_measured_mandated(
     args). If the transition is absent from the manifest it is not measurable
     here and the gate FAILs closed.
     """
+    preflight = _preflight_measured_transition(
+        from_phase, to_phase, conditional=conditional, skipped=skipped
+    )
+    if preflight is not None:
+        return preflight
     spec = manifest.get(_txn_key(from_phase, to_phase))
     required = spec.required if spec else ()
     evidence = measure_mandated(target, required, collector=collector, runner=runner, hasher=hasher)
@@ -666,24 +739,22 @@ def evaluate_measured_mandated_from_with_receipt(
     The receipt records the transition, verdict, mandated + matched node ids, the
     manifest-pinned vs. on-disk-observed shas, the pytest exit code, the manifest
     trust-root kind, and the runner tier (ci/local) — turning a green into a
-    replay-checkable record. The receipt is emitted on EVERY path (including the
-    not-measurable and unevaluable fail-closed paths), so every non-PASS result is
-    as auditable as a PASS.
+    replay-checkable record. The receipt is emitted on every path that returns a
+    GateResult (including not-measurable and unevaluable fail-closed paths). Caller
+    bugs raise before evaluation and therefore return neither a result nor a receipt.
     """
     source_kind = type(source).__name__
-    if not is_measurable(from_phase, to_phase):
-        result = GateResult(
-            from_phase,
-            to_phase,
-            Verdict.FAIL,
-            f"{from_phase}->{to_phase} is not locally measurable (see MEASURABLE_TRANSITIONS)",
-        )
-        return result, build_gate_receipt(
-            result,
-            gate_kind="measured-mandated",
-            target=target,
-            manifest_source_kind=source_kind,
-        )
+    preflight = _preflight_production_with_receipt(
+        from_phase,
+        to_phase,
+        target=target,
+        gate_kind="measured-mandated",
+        manifest_source_kind=source_kind,
+        conditional=conditional,
+        skipped=skipped,
+    )
+    if preflight is not None:
+        return preflight
     try:
         manifest = source.specs()
         spec = manifest.get(_txn_key(from_phase, to_phase))
