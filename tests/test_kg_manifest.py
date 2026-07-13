@@ -50,7 +50,10 @@ def test_kg_source_backend_error_fails_closed():
     r = evaluate_measured_mandated_from(
         "SCW", "MetaReview", target=".", source=KgManifestSource(client=Boom())
     )
-    assert r.verdict.value == "FAIL"  # ValueError translated -> fail closed
+    # Backend down = could-not-evaluate -> ERROR (still fail-closed), not FAIL
+    # (PROM16 C4: an outage is not an earned red). ValueError from specs() is
+    # translated to the ERROR verdict by the wrapper's outer except.
+    assert r.verdict.value == "ERROR"
 
 
 def test_kg_source_empty_rows_fail_closed(tmp_path):

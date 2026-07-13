@@ -13,7 +13,22 @@ source_modules =
     apt_engine.phase_map
     apt_engine.legion
     apt_engine.precondition
+    apt_engine.receipt
     apt_engine.cli
     apt_engine.frontends.mcp_server
 forbidden_modules =
     apt_engine.contrib
+
+# PROM16 P2 item 8 (D3): the three parallel single-purpose adapters each hang
+# off the shared foundation (phases / gate) and must stay siblings — none may
+# grow a dependency on another. A full `layers` contract is deliberately NOT
+# used: receipt.py carries TYPE_CHECKING back-imports of gate/precondition that a
+# strict layering would (correctly) read as a cycle, so the structural guard is
+# scoped to the coupling that actually threatens re-tangling.
+[importlinter:contract:core-adapters-independent]
+name = Parallel core adapters (detect / phase_map / legion) must not import one another
+type = independence
+modules =
+    apt_engine.detect
+    apt_engine.phase_map
+    apt_engine.legion

@@ -55,6 +55,19 @@ it actually composes: `phases`, `gate`, `detect`, `precondition`, `phase_map`,
 - A boundary test (`tests/test_contrib_boundary.py`) pins that the belt stays out
   of `apt_engine.__all__` and importable only from `contrib`.
 
+## 2026-07-13 amendment — current six-port belt and promotion rule
+
+`kg_manifest` later became the sixth `contrib` port. It implements the optional
+KG-backed `ManifestSource` seam and remains outside the stdlib core. In the other
+direction, `receipt.py` joined the core as a complete vertical feature: it has real
+CLI/MCP consumers and dedicated tests, so it did not repeat the inert-port failure
+that motivated this ADR.
+
+Future moves follow `docs/PROMOTION_CHECKLIST.md`. `.importlinter` enforces the
+core→`contrib` prohibition and the independence of the three parallel adapters
+(`detect`, `phase_map`, `legion`); this is the structural guard actually present,
+not a claimed full-package layers order.
+
 ## Reversibility
 
 Fully reversible: `git mv` the modules back and re-export them in a superseding

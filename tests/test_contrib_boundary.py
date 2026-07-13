@@ -75,3 +75,29 @@ def test_importing_core_does_not_load_contrib():
         env=os.environ.copy(),
     )
     assert r.returncode == 0, f"`import apt_engine` pulled in contrib: {r.stdout.strip()}"
+
+
+def test_forbidden_contract_enumerates_every_core_module():
+    """A new core file must not silently escape the explicit import-linter belt."""
+    from configparser import ConfigParser
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    parser = ConfigParser()
+    parser.read(root / ".importlinter")
+    declared = set(
+        parser["importlinter:contract:core-not-contrib"]["source_modules"].split()
+    )
+
+    package = root / "src" / "apt_engine"
+    actual = set()
+    for path in package.rglob("*.py"):
+        rel = path.relative_to(package)
+        if "contrib" in rel.parts or path.name == "__init__.py":
+            continue
+        actual.add(".".join(("apt_engine", *rel.with_suffix("").parts)))
+
+    assert declared == actual, (
+        "update .importlinter source_modules when the deterministic core changes; "
+        f"missing={sorted(actual - declared)}, stale={sorted(declared - actual)}"
+    )

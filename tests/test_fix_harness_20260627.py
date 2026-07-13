@@ -56,7 +56,7 @@ import inspect
 import re
 from pathlib import Path
 
-from apt_engine.detect import _PHASE_PATTERNS
+from apt_engine.detect import _SUBJECT_RE
 from apt_engine.frontends.mcp_server import build_tools
 from apt_engine.phases import CHAIN, PHASES, phase_by_name
 
@@ -161,7 +161,7 @@ def test_readme_carries_no_stale_numeric_test_count():
 
 def test_detect_patterns_cover_exactly_the_chain():
     """detect.py's de-drift guarantee is order-only; pin MEMBERSHIP too."""
-    assert set(_PHASE_PATTERNS) == set(CHAIN), (
+    assert set(_SUBJECT_RE) == set(CHAIN), (
         "detect markers and the canonical CHAIN have diverged in membership"
     )
 

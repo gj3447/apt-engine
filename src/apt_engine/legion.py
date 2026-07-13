@@ -14,7 +14,7 @@ run. Canonical roster (bhgman_tool `legion_roster`):
 
 The load-bearing tie to this engine:
   - **naesengmoon emits the verdict** — exactly the `gate.Verdict` algebra
-    (PASS / FAIL / SKIP / CONDITIONAL).
+    (PASS / FAIL / SKIP / CONDITIONAL / ERROR).
   - **hades realizes iff PASS** — `hades_realizes(v)` is `gate.can_advance(v)`.
     SKIP is never realize (SKIP != PASS), mirroring the gate-semantics ADR.
   - **naesengmoon requires all four prior provides** before it can emit a verdict
@@ -111,7 +111,7 @@ def hades_realizes(verdict: Verdict) -> bool:
     """hades realizes iff the verdict unlocks downstream — identical to can_advance.
 
     This is the engine-level statement of "실현 only behind a PASS verdict":
-    SKIP / FAIL / CONDITIONAL never realize.
+    SKIP / FAIL / CONDITIONAL / ERROR never realize.
     """
     return can_advance(verdict)
 
