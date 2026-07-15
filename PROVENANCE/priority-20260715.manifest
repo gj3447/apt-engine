@@ -1,0 +1,89 @@
+OpenTimestamps priority manifest
+================================
+
+이 파일의 sha256 은 비트코인에 앵커된다(옆의 .ots). 따라서 아래 커밋 sha 는
+그 블록시각 이전에 이미 존재했음이 신뢰 없이 증명된다.
+
+repository   : mark-apt-engine
+remote       : https://github.com/gj3447/apt-engine.git
+branch       : main
+commit       : fe92ed1d072d317f4e04af538b7af9dbf8f2205e
+tree         : 1937a35d15690f5734c47a1d41044344876eeb72
+commit_date  : 2026-07-13T15:52:49+09:00   (주의: git 시각은 위조 가능 — 신뢰 근거는 .ots 뿐)
+stamped_at   : 2026-07-15T06:48:23Z (로컬 주장. 권위 있는 시각은 .ots 의 블록시각)
+
+author       : Gyeongjun Ra (라경준)
+programme    : METAHUMOTONIC / SYMPOSIUM
+license      : see LICENSE
+
+검증:
+  ots verify priority-20260715.manifest.ots
+  git cat-file -p fe92ed1d072d317f4e04af538b7af9dbf8f2205e        # 매니페스트가 고정한 바로 그 커밋
+
+파일별 sha256 (git 추적 대상 전체)
+-----------------------------------
+61c4cda36e72e5b64267b0ca248970e5c1491c32ef8913220c5a8522b14505f5  .github/workflows/ci.yml
+0f9747b30778ffa8fd188dfdf73ed466f1b28244bf24f6dd3ba215a47ba434b8  .gitignore
+defba27d010da75db7c82581f75a4d85de1a58bc399bad3e04e7990adcb5156f  .importlinter
+553bc08cb8247ec6eac5ac4deae0c424f8b78e54baa2644e2745e3536ebba700  AGENTS.md
+f61161b0a2327014623279b44fc0cd1906e67253f6cecb7ab71a01206f4a073c  CODEOWNERS
+aa1ad20868163203ec72b2775056c5e0fd13a47c115440d36d339fb886f8ef79  PROM_16_HARDENING_2026-07-13.md
+aa665f14896002d4b7cd26916072a8c397a5137d8fb26ffff6fc915c72d47b1c  README.md
+6ef2d00daf2f101118166fbcf339d651dc584d957412e0ba701088ebda79eddc  apt-impact.json
+7f50be7e3c456a1a16a59efdcaa81e862e32ca868e4756f1889f772d8458196f  docs/ADR-0001-apt-engine-standalone-extraction.md
+1b46a5aceab5c64238ebacc11893a486181b016f4cdb8ac876a045b8703d1dee  docs/ADR-0002-scope-fork-cut-belt.md
+d4974d5c364c4d2b7a2fba97afc3ed1a4111d9c7049ac0fe484e632f11c8b044  docs/ADR-0003-trusted-runner-and-manifest-trust-root.md
+1c33f0932e1d1924da60b6d475030f4ea95ee969f8d11b3ed1ecfa8be236fe79  docs/ADR-0004-kg-manifest-source.md
+f66d0003ac4c82dea0cfa879896ecf45a4198b00813c76462b2377bbdeacfeb6  docs/PROMOTION_CHECKLIST.md
+48209474adec1d4b22f063e3d3e8ce763eb84740973feba71b8f3073e638b284  ooptdd_target/__init__.py
+e6bd099ddd0489950681ff10262b177dffb50b99da202417540e0b9c9be47a82  ooptdd_target/adapter.py
+85764b7c3a8b6a766baa0044f4ddabc8a64fd3c348275fd9f0e63fc8becbf6cb  ooptdd_target/requirements.yaml
+7f2d3140febc5cff8dc3cd7f49aa40dc1fca563c2d05a0a8b16e69f72efa25fc  pyproject.toml
+12d1154a511295160e6122076c1520b34ce0e50122d5d07800a1255393a935f7  scripts/lakatos_score.py
+68dc74fbcb219056837898ea4abad9537673e855d588635dbe00082ea336df2b  src/apt_engine/__init__.py
+48769bf2a1be5f22f54abac231c3f683a2b9b1f6e406a6c53ced08f558337eb3  src/apt_engine/cli.py
+b9c21f68427c5ff2c79c0f190ae985eaba6d582985d1e95123fb86ff7a2be72b  src/apt_engine/contrib/__init__.py
+aa953b654a3b88df06eb5bf9166d48179138181b1ebb66ed73ce3b030635d297  src/apt_engine/contrib/circuit_breaker.py
+ed6186565a49c01cef5024a129650e55259c849eb19bc8d6a5fc666cdad60390  src/apt_engine/contrib/gate_override.py
+78b4b971b6197b0a81f29b886b36b729b19836e94c94e8071b6e498343c28d6e  src/apt_engine/contrib/gate_policy.py
+b0fb037beb14e3fd81397dc73e5098f410236a174c1c6eadec8480c02d75a203  src/apt_engine/contrib/kg_manifest.py
+5c04498498cfbd732f237da0200e39246bffd2e5192d0596c4737a912b143f42  src/apt_engine/contrib/opa.py
+f9d831fa3ac55a4bc764bf55b9a43d2e6f0db12a6e7b7bf9bef05e11cafde2a1  src/apt_engine/contrib/resolver/__init__.py
+3a7d8d562fae254c37d0163d1b9575c3d6e785a40d1b4780296f1152867229bf  src/apt_engine/contrib/resolver/config_source.py
+154575cc155d600736a006938ccfd43dba15320b6702c2d7c61f02fce88151bc  src/apt_engine/contrib/resolver/drift.py
+f52cabf355306e62bdf13ea99a6280551b7af9094e2e2c72d86671a954222d79  src/apt_engine/contrib/resolver/render.py
+939575c602cfa8cab60f0b4c824e9f9df7b906d5397f1de2cc615d208f310ac8  src/apt_engine/detect.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  src/apt_engine/frontends/__init__.py
+67d67ab507a00c1734e441a71fc350517db217330f717a118bb8dcbfd27c1c78  src/apt_engine/frontends/mcp_server.py
+3217460b806191f79fe5dd1a0ef1a762fc866b32f89b94a46996a415047dafb9  src/apt_engine/gate.py
+27ed4199a8466870de3af9711c9cf11b2912c5db2df70126359a0f098b0555ea  src/apt_engine/legion.py
+9b4859aee49bd68386f741f6587b6441cd227ed0d3f4478de742cdc1e3ff9e18  src/apt_engine/phase_map.py
+e727dcee22ddac877c55f629b12106dc45f401a3cce2f40dcdb57b4317b679fd  src/apt_engine/phases.py
+42dc574c82130cc41db9a30668a7ce223cda7e3b6a2b681dd3cbbd830f460f10  src/apt_engine/precondition.py
+f075842ce115c1f86ac9c361d34296be0805777b3839b84de9336ef69a028b83  src/apt_engine/receipt.py
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  tests/fixtures/empty_repo/.gitkeep
+2c2b6b61409c12bb2f22b7eb234fe92ec6a42064865767f6ee714d80142601e6  tests/fixtures/roadmap_repo/apt-progress.md
+f25ebcb7d815da1b751ab448f0d9a7c3c24d73a575ba4598283837fca5acdc85  tests/fixtures/scw_repo/apt-progress.md
+c55b3e388b5f357e9474ea237316eb89c40becab21dd7b8c092a041799a06dee  tests/fixtures/scw_repo/feature-spans.json
+57a96bae5ff7505e0556127adedb5698923c6b2a102e867582f5df850b5dd057  tests/impact/test_apt_contract.py
+a56b9fe86805cae17dd5358f4f6bee5c53ce80771c40ba5e68fb39dcbac04acf  tests/test_circuit_breaker.py
+a9ccb0fa5e51caac268d9e9396c530b7a6961580791ca38820db695a49d7512c  tests/test_cli_gate.py
+0c6f0c0c6dc30857edf13097058157754497ddd461f44e2bbbb135b9988c5025  tests/test_contrib_boundary.py
+e09539788e172043c4d65bb10e548007e775728e380e169f33a4665bd72b7ee4  tests/test_detect.py
+6ddec46ea6cdbfc68576cc8b32b63ce117133e30d9c0a4d4a240ba8b5e1eeb6d  tests/test_fix_harness_20260627.py
+a6c8915e605634b829be0b9312ba649c7613f8feaf5cdd5486f4a2df43832190  tests/test_gate.py
+bb42599c3f461b57c5a098e2f22fe61b267e03274b5ecd9bec7df171d7b66154  tests/test_gate_algebra_exhaustive.py
+44e3591994098de314044e89b68ed50972b6631284e94bae153ba7a3d2d255ad  tests/test_gate_override.py
+00bbf246da11247d2d3818e8a807da1b91944405c3a3d539be16d8dc10b5efd4  tests/test_gate_policy.py
+c3b4fcf8b04542ee717d77075e518ab2ced22308910bd41bac78ac22329132d1  tests/test_impact_binding.py
+109014eda2f8dcd33aa3b94fdc6ebf17b04ceb196485844ac7381b6871d7c3c1  tests/test_kg_manifest.py
+4b5da45b87dbb43f11b8fe08f5f39462740689815ed7fad7f2357765966f820a  tests/test_legion.py
+598cf5530e1ae7c98fdb541b1298df7d26367022386a1696a1426de6cf7af9da  tests/test_manifest_source.py
+fd81cc5ca74835e61ca46b57c5fe1538bd5d74258092097825b2a9d1e8f54ac3  tests/test_mcp_frontend.py
+d35497fb1e8c6372a840c5ad8ed67e42d42de4b7ad59f31982562807f33cb78a  tests/test_opa.py
+e5eb0b7586a1025a16a8a1e114f95d2593bc20232dfd4eb039fbc52a84cfd356  tests/test_phase_map.py
+fa99d50658ba1313b19149f0593ca7d12e1e01dd9b6f98681ce4089196668b01  tests/test_phases.py
+bd42674497281b748cf144fd2544d3c58d53cb23d51807284d1fa7e6f4723dc6  tests/test_precondition.py
+7853afc15cf91cae3f0ef60ec0fb922b6ab716b203758a64b236fb17535bec23  tests/test_receipt.py
+fe636a802188ea2ab8e1b3c0e72f0ec2f5b7cd813ebe96e67ecceb234be793eb  tests/test_resolver_drift.py
+89f01dc66fec14436b1c328777805f933cedbcd92bd12dc234c60720bbecbeb3  uv.lock
