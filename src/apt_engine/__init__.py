@@ -48,6 +48,13 @@ from .receipt import (
     build_gate_receipt,
     runner_kind,
 )
+from .replay import (
+    Mismatch,
+    MismatchKind,
+    ReplayResult,
+    verify_replay,
+    verify_replay_file,
+)
 from .phases import CHAIN, PHASES, Phase, is_self_application, next_phase, phase_by_name
 
 __version__ = "0.1.0"
@@ -93,6 +100,12 @@ __all__ = [
     "runner_kind",
     "evaluate_measured_mandated_from_with_receipt",
     "evaluate_measured_mandated_default_with_receipt",
+    # replay verification of a stored GateReceipt (apt-engine verify --replay)
+    "verify_replay",
+    "verify_replay_file",
+    "ReplayResult",
+    "Mismatch",
+    "MismatchKind",
     # (a) v9<->v27 reconciliation
     "V9_TO_V27",
     "to_v27",

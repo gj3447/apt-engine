@@ -17,6 +17,7 @@ Kept here for whoever builds the standalone gate-endpoint. Import from
 from __future__ import annotations
 
 from . import resolver
+from .breaker_gate import CIRCUIT_OPEN_REASON, guarded_measured_gate
 from .circuit_breaker import CircuitBreaker, InMemoryStore, State
 from .gate_override import GateOverride, disclosure, make_override, override_allows
 from .gate_policy import EnforcementMode, OutwardVerdict, enforce
@@ -28,6 +29,10 @@ __all__ = [
     "CircuitBreaker",
     "InMemoryStore",
     "State",
+    # opt-in circuit-breaker adapter for the measured gate (ADR-0002-honouring;
+    # composes the core gate with the breaker without wiring it into the core).
+    "guarded_measured_gate",
+    "CIRCUIT_OPEN_REASON",
     "GateOverride",
     "disclosure",
     "make_override",
