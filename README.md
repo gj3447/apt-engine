@@ -42,6 +42,7 @@ layers on top and is out of scope for this stdlib core (see ADR-0001).
 | `apt_engine.legion` | (b) the 7 legion commanders + KG canonical node map; naesengmoon emits the gate verdict, hades realizes iff PASS. |
 | `apt_engine.precondition` | measured precondition — establishes truth from a real pytest exit code (`evaluate_measured_default`, mandated `evaluate_measured_mandated_default`), never a caller bool. |
 | `apt_engine.receipt` | replay-checkable JSON receipt for asserted and measured gate outcomes; records evidence but is not a security attestation. |
+| `apt_engine.replay` | deterministic replay verifier for a stored `GateReceipt` (`verify --replay`): structural validation + sha256 pin re-check + `audit_key` recomputation + a (scoped) verdict-consistency check. Fail-closed; does NOT re-run pytest. |
 | `apt_engine.frontends.mcp_server` | MCP frontend (`pip install -e '.[mcp]'`): `apt_chain / apt_detect / apt_gate / apt_gate_measured / apt_reconcile / apt_legion`. |
 
 ### `apt_engine.contrib` — layer-2 ports (NOT the core)
@@ -55,6 +56,17 @@ from `apt_engine.contrib`. The gate-server / OPA / config-resolver runtime is
 the dgx/SYMPOSIUM layer's job (`adr-apt-dgx-runtime-delegation-2026-05-25`); the
 scope-fork decision (CUT, not WIRE) is recorded in
 [`docs/ADR-0002-scope-fork-cut-belt.md`](docs/ADR-0002-scope-fork-cut-belt.md).
+
+`contrib.breaker_gate` (`guarded_measured_gate`) is the ADR-0002-honouring **opt-in
+integration adapter** for the circuit breaker: it composes the core measured gate
+with the contrib `CircuitBreaker` *without* wiring the breaker into the core
+(ADR-0002 forbids piecemeal core promotion, and crash/resume + loop policy is
+delegated to the runtime). It lives in `contrib` — which may import the core, never
+the reverse — so with no breaker supplied the core path is unchanged. When a breaker
+is supplied, repeated could-not-evaluate `ERROR`s (a source/manifest outage) trip it
+and, while OPEN, the gate short-circuits to a fail-closed `ERROR` verdict
+(`reason='circuit_open'`) recorded on the `GateReceipt`. A FAIL is an *evaluated* red,
+not an outage, so it does not trip the breaker.
 
 A gate **PASS is a necessary, not a sufficient, condition** for the transition
 being *right*: it certifies the mandated tests ran green under isolation, not
@@ -108,7 +120,41 @@ apt-engine gate SCW MetaReview --measure tests/impact --impact-manifest apt-impa
                                            #   (manifest + tests are project-provided; a missing
                                            #    manifest fails closed — it does not crash)
 apt-engine gate MetaReview MetaReview      # -> FAIL (self_application_forbidden), exit 1
+apt-engine gate SCW MetaReview --measure tests --impact-manifest apt-impact.json \
+           --receipt-out receipt.json      # emit an auditable GateReceipt
+apt-engine verify --replay receipt.json    # replay-verify it against the checkout
+                                           #   (structural + sha256 pin re-check +
+                                           #    audit_key recompute + verdict re-eval;
+                                           #    NO pytest re-run). exit 0 iff verified
 ```
+
+### Replay verification (`verify --replay`)
+
+A `GateReceipt` (from `gate --receipt-out`) is replay-checkable: `verify --replay`
+re-derives the gate decision from the receipt's own recorded inputs and the current
+checkout — WITHOUT re-running pytest — and reports `replay_verified` plus a typed
+`mismatches` list. It (1) structurally validates the receipt (schema v1 + required
+fields, and rejects a mistyped optional field such as a non-string `target`), (2)
+re-hashes each recorded mandated test file and compares to the recorded sha256, (3)
+recomputes the `audit_key` fingerprint from the re-derived verdict + re-observed shas
+and diffs it against the stored one, and (4) checks the stored verdict against the
+set of verdicts the recorded pytest exit code / error / phase adjacency can actually
+produce. It is **fail-closed on every I/O and structural fault**: an unreadable
+receipt, invalid JSON, a missing OR mistyped field, an unsupported schema, an unknown
+phase, or a missing/drifted test file all yield `replay_verified=false` (exit 1),
+never an exception. `--checkout ROOT` resolves the mandated files against a different
+working tree.
+
+**Scope of the verdict check (read before trusting it).** The verdict check catches
+an exit-code-pinned inconsistency (exit-0-but-FAIL, exit-nonzero-but-PASS/CONDITIONAL),
+a non-adjacent/self-application transition that is not FAIL, and an ERROR verdict
+whose `error` field is absent (or vice versa). It does **not** distinguish PASS vs
+SKIP vs CONDITIONAL at the same exit code (nor FAIL vs SKIP at a nonzero one): the
+`--skip` / `--conditional` caller flags are not recorded on a v1 receipt, so a tamper
+that only swaps among those flag-explained verdicts at a fixed exit code is not
+caught. Same trust boundary as the receipt otherwise: replay checks internal
+consistency + on-disk content pins, not a re-execution — a forged recorded exit code
+is out of scope (that needs the trusted CI runner of ADR-0003).
 
 ## Measured gate & the trusted runner (CI)
 

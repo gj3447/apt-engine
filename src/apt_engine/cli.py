@@ -5,6 +5,8 @@ apt-engine chain                # print canonical phase chain + contracts
 apt-engine gate <from> <to>     # evaluate a transition; exit 0 iff PASS.
                                 #   default fail-closed; --precondition-met to assert,
                                 #   --measure TARGET to gate on a real pytest run.
+apt-engine verify --replay R    # replay-verify a stored GateReceipt R against the
+                                #   checkout (no pytest re-run); exit 0 iff verified.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from .precondition import (
     evaluate_measured_mandated_default_with_receipt,
 )
 from .receipt import build_gate_receipt
+from .replay import verify_replay_file
 
 
 def _cmd_detect(args: argparse.Namespace) -> int:
@@ -125,6 +128,15 @@ def _cmd_gate(args: argparse.Namespace) -> int:
     return 0 if result.verdict is Verdict.PASS else 1
 
 
+def _cmd_verify(args: argparse.Namespace) -> int:
+    result = verify_replay_file(args.replay, checkout=args.checkout)
+    print(json.dumps(result.to_dict(), indent=2))
+    # Fail-closed at the PROCESS boundary: exit 0 only when the receipt actually
+    # replays; any mismatch / unreadable receipt / schema drift exits nonzero so
+    # `&&` / `set -e` / CI pipelines block on an unverifiable audit record.
+    return 0 if result.replay_verified else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="apt-engine", description="APT phase-contract engine")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -172,6 +184,26 @@ def build_parser() -> argparse.ArgumentParser:
         "observed shas + pytest exit code + runner tier)",
     )
     g.set_defaults(func=_cmd_gate)
+
+    v = sub.add_parser(
+        "verify", help="replay-verify a stored GateReceipt against the checkout"
+    )
+    v.add_argument(
+        "--replay",
+        metavar="RECEIPT",
+        required=True,
+        help="path to a GateReceipt JSON (from `gate --receipt-out`) to replay-verify: "
+        "structural + sha256 pin re-check + audit_key recomputation + verdict "
+        "re-evaluation (does NOT re-run pytest)",
+    )
+    v.add_argument(
+        "--checkout",
+        metavar="ROOT",
+        default=None,
+        help="base dir to resolve the mandated test files against (default: the "
+        "receipt's recorded --measure target)",
+    )
+    v.set_defaults(func=_cmd_verify)
 
     return parser
 

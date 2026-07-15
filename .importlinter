@@ -14,6 +14,7 @@ source_modules =
     apt_engine.legion
     apt_engine.precondition
     apt_engine.receipt
+    apt_engine.replay
     apt_engine.cli
     apt_engine.frontends.mcp_server
 forbidden_modules =

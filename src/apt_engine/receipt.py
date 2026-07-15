@@ -13,8 +13,9 @@ boundary and NOT a cryptographic attestation. There is no signing key here; a
 receipt is a diffable JSON record whose `audit_key()` is the content-addressable,
 checkout-portable fingerprint (the receipt object itself is not hashable — it has
 dict fields). It is the stdlib-scale analogue of an in-toto/SLSA provenance
-statement, and the prerequisite artifact for a future `apt-engine verify --replay`
-(re-run and diff `audit_key()` against a prior receipt).
+statement, and the prerequisite artifact for `apt-engine verify --replay`
+(re-derive the verdict + re-observe on-disk shas and diff `audit_key()` against
+this receipt, without re-running pytest — see `apt_engine.replay`).
 
 Honest boundary (mirrors precondition.py's TRUST BOUNDARY note): a receipt
 records what the gate observed; it does not make the observation itself
