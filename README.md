@@ -207,6 +207,19 @@ detect_phase("/path/to/repo")["current_phase"]   # 'SCW' | 'unknown' | ...
 PYTHONPATH=src python3 -m pytest -q     # all green (stdlib core + ports + ooptdd fix harness)
 ```
 
+The canonical `main` checkout was re-run at commit `05fa737` on 2026-07-15
+(Python 3.10):
+
+```bash
+PYTHONPATH=src python3 -m pytest -q
+# 233 passed
+```
+
+Requires Python ≥3.10; the measured-gate tests shell out to `python -I -m pytest`,
+so install `.[dev]` (or `.[gate]`) in the runner first. This receipt covers the
+local self-test path; it is not evidence for the runtime / OPA / KG layers that
+stay on dgx (see the contrib table and ADR-0002).
+
 The canonical-order test is **revert-proof** (mutation-tested): reordering the
 chain back to the bhgman_tool skeleton's `(…SCW, Cleanup, MetaReview)` fails the
 suite. See ADR-0001 §"Drift correction".
