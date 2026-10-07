@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Deterministic APT (SA->SP->ST->SCW->MetaReview->Cleanup) phase-contract engine: phase state machine + gate verdict model + on-disk phase detection. Stdlib-only core."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
+license = "LicenseRef-MetaHumotonic-1.2"
+license-files = ["LICENSE", "LICENSE-NOTICE.md", "licenses/pre-mhl-2026-10-07/*", "NOTICE", "COPYRIGHT"]
 authors = [{ name = "gj3447" }]
 # Core (phases / gate / detect) has ZERO runtime deps (stdlib only).
 # The MCP server frontend needs fastmcp; install via the `mcp` extra.
